@@ -1,5 +1,10 @@
 ﻿# Changements
 
+## 3.0.0-test4 - 2026-09-17
+
+- README : liens de telechargement de PowerShell 7 (versions publiees, commande winget, procedure Microsoft) dans l etape de demarrage, le tableau de compatibilite et les references. Precision que PowerShell 7 cohabite avec Windows PowerShell 5.1 au lieu de le remplacer.
+- README : liens vers GliderUI, sur PowerShell Gallery et sur son depot.
+
 ## 3.0.0-test3 - 2026-09-17
 
 - Correction de `Impossible de convertir la valeur GliderUI.Avalonia.Controls.DataGridTextColumn ... en type System.Collections.Hashtable[]`. Dans `New-ADTUiDataGrid` et `New-ADTUiDataSourceList`, la boucle `foreach ($column ...)` reutilisait le nom du parametre `[hashtable[]]$Column` : les noms de variables PowerShell etant insensibles a la casse, la contrainte de type du parametre s appliquait a la variable de boucle. Aucune grille de resultats ne pouvait s afficher, ni l apercu avant import.

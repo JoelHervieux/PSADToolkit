@@ -8,7 +8,7 @@ Ce document définit la numérotation de PSADToolkit, l'endroit où chaque versi
 MAJEUR.MINEUR.CORRECTIF[-CANAL]
 ```
 
-Exemples : `3.0.0-test3`, `3.1.0-rc1`, `3.1.0`.
+Exemples : `3.0.0-test4`, `3.1.0-rc1`, `3.1.0`.
 
 | Élément | Quand il change |
 |---|---|
@@ -29,7 +29,7 @@ Exemples : `3.0.0-test3`, `3.1.0-rc1`, `3.1.0`.
 
 Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShellGet n'accepte dans un suffixe de préversion que des caractères alphanumériques et le trait d'union.
 
-**État actuel : `3.0.0-test3`.** Le passage à 3.0.0 applique la règle MAJEUR ci-dessus : l'interface abandonne Windows Forms pour GliderUI et exige PowerShell 7.4, alors que les versions 2.x s'exécutaient sous Windows PowerShell 2.0 à 5.1. Aucune version de ce dépôt n'a encore passé la recette Windows. Tant que le canal reste `test`, la compatibilité annoncée dans `README.md` est une cible technique, pas un résultat mesuré.
+**État actuel : `3.0.0-test4`.** Le passage à 3.0.0 applique la règle MAJEUR ci-dessus : l'interface abandonne Windows Forms pour GliderUI et exige PowerShell 7.4, alors que les versions 2.x s'exécutaient sous Windows PowerShell 2.0 à 5.1. Aucune version de ce dépôt n'a encore passé la recette Windows. Tant que le canal reste `test`, la compatibilité annoncée dans `README.md` est une cible technique, pas un résultat mesuré.
 
 ## Où la version est inscrite
 
@@ -37,11 +37,11 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 |---|---|---|
 | `PSADToolkit.psd1` → `ModuleVersion` | Numéro seul : `3.0.0`. **Source de vérité.** | À la main. |
 | `PSADToolkit.psd1` → `PrivateData.PSData.Prerelease` | Canal seul : `test1`. Chaîne vide pour une version stable. | À la main. |
-| `dist\PSADToolkit-Standalone.ps1` (en-tête) | Version complète : `3.0.0-test3`. | `Build.ps1`, jamais à la main. |
+| `dist\PSADToolkit-Standalone.ps1` (en-tête) | Version complète : `3.0.0-test4`. | `Build.ps1`, jamais à la main. |
 | `Start-PSADToolkit.ps1` (attribut `Title` du XAML) | Version complète. L'opérateur doit voir à l'écran qu'il utilise une version de test. | À la main. |
 | `README.md` (titre de niveau 1 et encadré d'état) | Version complète. | À la main. |
 | `CHANGELOG.md` | Une section `## <version complète> - AAAA-MM-JJ` par version, ordre décroissant. | À la main. |
-| Étiquette git | `v<version complète>`, par exemple `v3.0.0-test3`. | `git tag`. |
+| Étiquette git | `v<version complète>`, par exemple `v3.0.0-test4`. | `git tag`. |
 
 `ModuleVersion` reste purement numérique parce que Windows PowerShell 2.0 refuse tout suffixe dans un manifeste. La version complète est reconstituée par concaténation, comme le fait `Build.ps1`.
 
@@ -62,7 +62,7 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
    .\Tests\Test-Compatibility.ps1
    ```
 
-6. Commiter, puis étiqueter : `git tag -a v3.0.0-test3 -m "PSADToolkit 3.0.0-test3"`.
+6. Commiter, puis étiqueter : `git tag -a v3.0.0-test4 -m "PSADToolkit 3.0.0-test4"`.
 7. Pousser la branche et l'étiquette : `git push -u origin <branche> --follow-tags`.
 
 ## Passage en version stable

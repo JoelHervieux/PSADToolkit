@@ -701,7 +701,7 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.0.0-test3 | Administration Active Directory"
+        Title="PSADToolkit 3.0.0-test4 | Administration Active Directory"
         Width="1200" Height="920">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 

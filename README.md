@@ -1,14 +1,26 @@
-﻿# PSADToolkit 3.0.0-test3
+﻿# PSADToolkit 3.0.0-test4
 
 Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.0.0-test3` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.0.0-test4` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
 ## Démarrage
 
-1. Installer **PowerShell 7.4 ou supérieur**, puis le module GliderUI et son serveur :
+1. Installer **PowerShell 7.4 ou supérieur**. Il s'installe **à côté** de Windows PowerShell 5.1 et ne le remplace pas.
+
+   - Téléchargement direct : [github.com/PowerShell/PowerShell/releases/latest](https://github.com/PowerShell/PowerShell/releases/latest) — prendre le fichier `PowerShell-<version>-win-x64.msi`.
+   - Ou en ligne de commande : `winget install --id Microsoft.PowerShell -e`
+   - Procédure détaillée : [Installation de PowerShell sur Windows — Microsoft](https://learn.microsoft.com/fr-fr/powershell/scripting/install/installing-powershell-on-windows)
+
+   Vérifier ensuite la version depuis `pwsh.exe` :
+
+   ```powershell
+   $PSVersionTable.PSVersion
+   ```
+
+2. Installer le module [GliderUI](https://www.powershellgallery.com/packages/GliderUI) et son serveur :
 
    ```powershell
    Install-PSResource -Name GliderUI
@@ -16,11 +28,11 @@ Administration Active Directory avec interface graphique en français, import CS
    ```
 
    `Install-GLIServer` télécharge l'exécutable Avalonia correspondant à la plateforme. Le relancer après chaque mise à jour du module.
-2. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
-3. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
-4. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
-5. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
-6. Choisir un onglet, remplir les champs, puis cliquer sur **Exécuter**. Pour les modifications AD, la **simulation est cochée par défaut**. Décocher seulement après vérification : une confirmation récapitule la cible et l'action.
+3. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
+4. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
+5. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
+6. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
+7. Choisir un onglet, remplir les champs, puis cliquer sur **Exécuter**. Pour les modifications AD, la **simulation est cochée par défaut**. Décocher seulement après vérification : une confirmation récapitule la cible et l'action.
 
 Les résultats s'affichent dans le tableau. Agrandir la fenêtre ou défiler horizontalement pour lire toutes les colonnes. Vérifier **Status**, **Error** et **Messages**. `Partiel` signifie que certaines modifications ont déjà été appliquées : examiner l'état du compte avant de relancer.
 
@@ -30,12 +42,12 @@ L'interface reste réactive pendant les opérations. Une seule opération est au
 
 | Rôle | Système | Prérequis |
 |---|---|---|
-| Poste qui affiche l'interface | Windows 10 / 11, ou Windows Server 2016 à 2025 avec bureau | PowerShell 7.4+, module GliderUI et `Install-GLIServer` |
+| Poste qui affiche l'interface | Windows 10 / 11, ou Windows Server 2016 à 2025 avec bureau | [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest), module [GliderUI](https://www.powershellgallery.com/packages/GliderUI) et `Install-GLIServer` |
 | Contrôleurs de domaine administrés | Windows Server 2008 SP2 à 2025 | Aucun composant à installer : accès LDAP / ADSI depuis le poste d'administration |
 | Utilisation en ligne de commande | Tout hôte Windows joignant le domaine | Windows PowerShell 2.0 à 5.1, ou PowerShell 7 ; `.NET` et `System.DirectoryServices` du système |
 | Server Core | Windows Server sans bureau | Ligne de commande seulement : lancer l'interface depuis un poste d'administration |
 
-**L'interface ne s'exécute plus sous Windows PowerShell.** `powershell.exe` ne dépasse pas la version 5.1 ; GliderUI exige 7.4. Lancer l'interface avec `pwsh.exe`, ce que fait `Lancer.cmd`. Les serveurs qui ne peuvent pas recevoir PowerShell 7, dont Server 2008 SP2, restent administrables : installer PSADToolkit sur un poste d'administration moderne, qui joint le contrôleur de domaine en LDAP.
+**L'interface ne s'exécute plus sous Windows PowerShell.** `powershell.exe` ne dépasse pas la version 5.1 ; [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest) est exigé par GliderUI. Lancer l'interface avec `pwsh.exe`, ce que fait `Lancer.cmd`. Les serveurs qui ne peuvent pas recevoir PowerShell 7, dont Server 2008 SP2, restent administrables : installer PSADToolkit sur un poste d'administration moderne, qui joint le contrôleur de domaine en LDAP.
 
 **Le backend reste Windows.** GliderUI est multiplateforme, mais `System.DirectoryServices` ne l'est pas : l'interface refuse de démarrer ailleurs que sous Windows.
 
@@ -155,5 +167,7 @@ Le pipeline GitHub Actions est configuré pour reconstruire et vérifier sous Wi
 - [Authentification DirectoryServices — Microsoft](https://learn.microsoft.com/en-us/dotnet/api/system.directoryservices.authenticationtypes) : authentification intégrée, signature et chiffrement de session.
 - [Dialecte LDAP ADSI — Microsoft](https://learn.microsoft.com/en-us/windows/win32/adsi/ldap-dialect) : recherches LDAP et paramètres de pagination.
 - [Attribut memberOf — Microsoft](https://learn.microsoft.com/en-us/windows/win32/adschema/a-memberof) : appartenance aux groupes dans le schéma AD, notamment sur Server 2008.
+- [PowerShell — versions publiées](https://github.com/PowerShell/PowerShell/releases/latest) et [installation sur Windows — Microsoft](https://learn.microsoft.com/fr-fr/powershell/scripting/install/installing-powershell-on-windows) : PowerShell 7 cohabite avec Windows PowerShell 5.1.
+- [GliderUI — PowerShell Gallery](https://www.powershellgallery.com/packages/GliderUI) et [dépôt GitHub](https://github.com/mdgrs-mei/GliderUI) : moteur de l'interface, bâti sur Avalonia. Le dépôt annonce une phase de prototypage avec des ruptures d'API.
 
 Licence MIT — voir `LICENSE`.
