@@ -93,13 +93,38 @@ if ($missingTypes.Count) {
     foreach ($missingType in ($missingTypes | Select-Object -First 8)) { [void]$report.AppendLine('  - ' + $missingType) }
     if ($missingTypes.Count -gt 8) { [void]$report.AppendLine(('  ... et {0} autre(s).' -f ($missingTypes.Count - 8))) }
     [void]$report.AppendLine('')
-    [void]$report.AppendLine('Cause la plus frequente : le serveur GliderUI n est pas installe, ou il date d une')
-    [void]$report.AppendLine('version anterieure du module. Le serveur doit etre reinstalle a CHAQUE mise a jour.')
+
+    # Le serveur est un module DISTINCT, propre a la plateforme, installe a cote de
+    # GliderUI : GliderUI.Server.win-x64 par exemple. C est lui qui porte les classes
+    # Avalonia. Nommer precisement celui qui manque evite de chercher au mauvais endroit.
+    $architecture = 'x64'
+    if ([string][System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq 'Arm64') { $architecture = 'arm64' }
+    $expectedServer = 'GliderUI.Server.win-{0}' -f $architecture
+    $serverModules = @(Get-Module -ListAvailable -Name 'GliderUI.Server.*')
+    $serverPresent = $false
+    foreach ($serverModule in $serverModules) {
+        if ($serverModule.Name -eq $expectedServer -and [string]$serverModule.Version -eq $loaded) { $serverPresent = $true }
+    }
+
+    if (-not $serverPresent) {
+        [void]$report.AppendLine(('CAUSE : le serveur {0} version {1} n est pas installe.' -f $expectedServer, $loaded))
+        [void]$report.AppendLine('Le module GliderUI seul ne suffit pas : les classes Avalonia viennent du serveur,')
+        [void]$report.AppendLine('qui est un module distinct a installer a cote.')
+        [void]$report.AppendLine('')
+        [void]$report.AppendLine('    Install-GLIServer -UninstallOldVersions')
+        [void]$report.AppendLine('')
+        [void]$report.AppendLine('Si cette machine n atteint pas PowerShell Gallery - "Hote inconnu", proxy,')
+        [void]$report.AppendLine('serveur isole - voir la procedure hors ligne dans README.md, section')
+        [void]$report.AppendLine('"Connexion et depannage".')
+    } else {
+        [void]$report.AppendLine('Le serveur attendu est present mais ses types ne se resolvent pas. Le reinstaller,')
+        [void]$report.AppendLine('puis relancer dans une session neuve :')
+        [void]$report.AppendLine('')
+        [void]$report.AppendLine('    Update-PSResource -Name GliderUI')
+        [void]$report.AppendLine('    Install-GLIServer -UninstallOldVersions')
+    }
     [void]$report.AppendLine('')
-    [void]$report.AppendLine('    Update-PSResource -Name GliderUI')
-    [void]$report.AppendLine('    Install-GLIServer -UninstallOldVersions')
-    [void]$report.AppendLine('')
-    [void]$report.AppendLine('Puis relancer. Pour un rapport detaille : .\Tests\Test-GliderUI.ps1')
+    [void]$report.AppendLine('Rapport detaille : pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1')
     throw $report.ToString()
 }
 

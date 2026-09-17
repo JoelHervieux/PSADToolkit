@@ -27,7 +27,9 @@ Administration Active Directory avec interface graphique en français : **consol
    Install-GLIServer
    ```
 
-   `Install-GLIServer` télécharge l'exécutable Avalonia correspondant à la plateforme. Le relancer après chaque mise à jour du module.
+   **Deux paquets, pas un.** `GliderUI` est le module ; `Install-GLIServer` installe à côté un **module distinct**, propre à la plateforme — `GliderUI.Server.win-x64` sur un Windows 64 bits. C'est lui qui porte les classes Avalonia utilisées par l'interface. Sans lui, `Import-Module GliderUI` réussit mais aucune classe n'existe. Le relancer **après chaque mise à jour** du module.
+
+   Si la machine n'atteint pas PowerShell Gallery — serveur isolé, proxy, `Hôte inconnu` — voir *Installation hors ligne* ci-dessous.
 3. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
 4. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
 5. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
@@ -38,6 +40,33 @@ Administration Active Directory avec interface graphique en français : **consol
 Les résultats s'affichent dans le tableau. Agrandir la fenêtre ou défiler horizontalement pour lire toutes les colonnes. Vérifier **Status**, **Error** et **Messages**. `Partiel` signifie que certaines modifications ont déjà été appliquées : examiner l'état du compte avant de relancer.
 
 L'interface reste réactive pendant les opérations. Une seule opération est autorisée à la fois. Attendre sa fin avant de fermer. Les mots de passe générés sont masqués dans le tableau et exclus de l'export standard ; la case **Afficher / exporter les mots de passe générés** permet de les consulter ou de les exporter explicitement. Ils restent en mémoire jusqu'au prochain traitement ou à la fermeture.
+
+### Installation hors ligne
+
+Un contrôleur de domaine ou un serveur d'administration n'a souvent aucun accès à Internet. `Install-GLIServer` échoue alors sur `Hôte inconnu (www.powershellgallery.com:443)`, et l'interface refuse ensuite de démarrer faute de classes Avalonia.
+
+`Install-GLIServer` accepte `-Repository` : on peut donc l'alimenter depuis un dossier local.
+
+1. Sur un poste **connecté**, de **même système et même architecture**, récupérer les deux paquets dans un dossier. Remplacer `0.4.1` par la version de GliderUI réellement installée, et `win-x64` par `win-arm64` le cas échéant :
+
+   ```powershell
+   Save-PSResource -Name GliderUI -Version 0.4.1 -Path C:\Transfert -AsNupkg -TrustRepository
+   Save-PSResource -Name GliderUI.Server.win-x64 -Version 0.4.1 -Path C:\Transfert -AsNupkg -TrustRepository
+   ```
+
+2. Copier `C:\Transfert` sur la machine cible, puis l'enregistrer comme dépôt local et installer :
+
+   ```powershell
+   Register-PSResourceRepository -Name GliderUILocal -Uri C:\Transfert -Trusted
+   Install-PSResource -Name GliderUI -Repository GliderUILocal -TrustRepository
+   Install-GLIServer -Repository GliderUILocal -TrustRepository
+   ```
+
+3. Fermer **toutes** les fenêtres PowerShell, puis relancer `Lancer.cmd`. Un assembly déjà chargé dans une session ne peut pas y être remplacé.
+
+La version du serveur doit être **exactement** celle du module : `Install-GLIServer` demande le paquet serveur correspondant à la version de GliderUI chargée. Après chaque `Update-PSResource -Name GliderUI`, refaire les deux étapes.
+
+`pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` vérifie à tout moment ce qui est installé et ce qui manque.
 
 ## Compatibilité et prérequis
 
@@ -70,7 +99,9 @@ La compatibilité ci-dessus est une **cible technique**, pas une certification o
   Install-GLIServer -UninstallOldVersions
   ```
 
-  Fermer ensuite toutes les fenêtres PowerShell avant de relancer : un assembly déjà chargé dans une session ne peut pas y être remplacé. Pour un rapport détaillé — versions installées, présence du serveur, résolution de chaque type, assemblys chargés — lancer `pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` et joindre sa sortie à tout signalement.
+  Fermer ensuite toutes les fenêtres PowerShell avant de relancer : un assembly déjà chargé dans une session ne peut pas y être remplacé. Si `Install-GLIServer` échoue lui-même sur `Hôte inconnu`, la machine n'atteint pas PowerShell Gallery : suivre *Installation hors ligne*.
+
+  Pour un rapport détaillé — versions installées, présence et version du module serveur, résolution de chaque type, assemblys chargés — lancer `pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` et joindre sa sortie à tout signalement.
 
   L'interface vérifie ces types au démarrage et rapporte précisément ceux qui manquent, au lieu d'échouer sur le premier rencontré.
 - Journal par défaut : `%LOCALAPPDATA%\PSADToolkit\PSADToolkit.log`. Paramètre `-LogPath` disponible en ligne de commande. Les erreurs de journalisation sont affichées comme avertissements. Aucun mot de passe n'est volontairement écrit dans ce journal.

@@ -58,22 +58,37 @@ Write-Output ('Version chargee : {0}' -f [string]$loaded.Version)
 
 Write-ADTSection 'Serveur GliderUI'
 # Les types Avalonia exposes par GliderUI sont produits par un generateur de source
-# livre avec le serveur : sans serveur a jour, le module se charge mais les types
-# manquent. C est la cause la plus frequente de "Impossible de trouver le type".
+# livre avec le serveur. Le serveur est un MODULE DISTINCT, propre a la plateforme,
+# installe a cote de GliderUI et non a l interieur : GliderUI.Server.win-x64 par
+# exemple. Sans lui, le module se charge et les types manquent. C est la cause la
+# plus frequente de "Impossible de trouver le type".
 $installServer = Get-Command -Name 'Install-GLIServer' -ErrorAction SilentlyContinue
 if ($installServer) { Write-Output 'Install-GLIServer : disponible' }
 else { Write-Output 'Install-GLIServer : ABSENT (module anterieur a la version 0.4.0)' }
 
-$serverFiles = @()
-foreach ($module in $available) {
-    $found = @(Get-ChildItem -Path $module.ModuleBase -Recurse -Filter 'GliderUI.Server*' -ErrorAction SilentlyContinue)
-    foreach ($file in $found) { $serverFiles += $file.FullName }
-}
-if ($serverFiles.Count) {
-    Write-Output ('Fichiers serveur trouves : {0}' -f $serverFiles.Count)
-    foreach ($file in ($serverFiles | Select-Object -First 5)) { Write-Output ('  ' + $file) }
+$architecture = 'x64'
+if ([string][System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq 'Arm64') { $architecture = 'arm64' }
+$platform = 'win'
+if ($IsLinux) { $platform = 'linux' }
+if ($IsMacOS) { $platform = 'osx' }
+$script:ExpectedServer = 'GliderUI.Server.{0}-{1}' -f $platform, $architecture
+$script:ExpectedVersion = [string]$loaded.Version
+Write-Output ('Serveur attendu : {0} version {1}' -f $script:ExpectedServer, $script:ExpectedVersion)
+
+$serverModules = @(Get-Module -ListAvailable -Name 'GliderUI.Server.*' | Sort-Object Version -Descending)
+$script:ServerMatch = $false
+if ($serverModules.Count) {
+    foreach ($module in $serverModules) {
+        $flag = ' '
+        if ($module.Name -eq $script:ExpectedServer -and [string]$module.Version -eq $script:ExpectedVersion) {
+            $flag = '*'
+            $script:ServerMatch = $true
+        }
+        Write-Output ('{0} {1,-28} {2,-10} {3}' -f $flag, $module.Name, [string]$module.Version, $module.ModuleBase)
+    }
+    if (-not $script:ServerMatch) { Write-Output '(aucune ligne ne correspond au serveur attendu)' }
 } else {
-    Write-Output 'Aucun fichier GliderUI.Server trouve sous les dossiers du module.'
+    Write-Output 'AUCUN module GliderUI.Server.* installe.'
 }
 
 Write-ADTSection 'Types requis par l interface'
@@ -151,17 +166,36 @@ if (-not $missing.Count) {
 }
 Write-Output ('{0} type(s) requis sur {1} sont introuvables.' -f $missing.Count, $requiredTypes.Count)
 Write-Output ''
-if ($missing.Count -eq $requiredTypes.Count) {
-    Write-Output 'AUCUN type ne se resout : le module est charge mais les classes generees'
-    Write-Output 'ne sont pas disponibles. Le serveur est absent ou desynchronise du module.'
+if (-not $script:ServerMatch) {
+    Write-Output ('CAUSE : le serveur {0} version {1} n est pas installe.' -f $script:ExpectedServer, $script:ExpectedVersion)
+    Write-Output 'Le module GliderUI seul ne suffit pas : les classes Avalonia viennent du serveur.'
+    Write-Output ''
+    Write-Output 'Si cette machine atteint PowerShell Gallery :'
+    Write-Output '    Install-GLIServer -UninstallOldVersions'
+    Write-Output ''
+    Write-Output 'Si elle ne l atteint pas - "Hote inconnu", proxy, serveur isole - installer'
+    Write-Output 'hors ligne depuis un poste connecte de MEME systeme et MEME architecture :'
+    Write-Output ''
+    Write-Output '  1. Sur le poste connecte, recuperer le paquet du serveur :'
+    Write-Output ('       Save-PSResource -Name {0} -Version {1} ``' -f $script:ExpectedServer, $script:ExpectedVersion)
+    Write-Output '           -Path C:\Transfert -AsNupkg -TrustRepository'
+    Write-Output ''
+    Write-Output '  2. Copier C:\Transfert sur cette machine, puis :'
+    Write-Output '       Register-PSResourceRepository -Name GliderUILocal ``'
+    Write-Output '           -Uri C:\Transfert -Trusted'
+    Write-Output '       Install-GLIServer -Repository GliderUILocal -TrustRepository'
+    Write-Output ''
+    Write-Output '  Install-GLIServer accepte -Repository : c est la voie prevue par GliderUI.'
+} elseif ($missing.Count -eq $requiredTypes.Count) {
+    Write-Output 'Le serveur attendu est present mais aucun type ne se resout.'
+    Write-Output 'Reinstaller le serveur, puis relancer dans une session neuve :'
+    Write-Output '    Install-GLIServer -UninstallOldVersions'
 } else {
     Write-Output 'Une partie seulement des types se resout : la version installee de GliderUI'
     Write-Output 'est vraisemblablement plus ancienne que celle attendue par l interface.'
+    Write-Output '    Update-PSResource -Name GliderUI'
+    Write-Output '    Install-GLIServer -UninstallOldVersions'
 }
-Write-Output ''
-Write-Output 'A executer, dans cet ordre :'
-Write-Output '    Update-PSResource -Name GliderUI'
-Write-Output '    Install-GLIServer -UninstallOldVersions'
 Write-Output ''
 Write-Output 'Le serveur doit etre reinstalle a CHAQUE mise a jour du module.'
 Write-Output 'Fermer ensuite toutes les fenetres PowerShell avant de relancer Lancer.cmd :'

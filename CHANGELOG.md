@@ -27,7 +27,18 @@ jamais pu apparaitre, faute d execution.
   l interface : tout type GliderUI construit ou obtenu par conversion doit y
   figurer, aucun type inutilise ne doit y rester, et les types de confort
   doivent en rester absents.
-- README : section de depannage dediee a ce message.
+- README : section de depannage dediee a ce message, et procedure d installation
+  hors ligne. Un controleur de domaine ou un serveur d administration n a souvent
+  aucun acces a Internet : `Install-GLIServer` echoue alors sur "Hote inconnu
+  (www.powershellgallery.com:443)". `Install-GLIServer` acceptant `-Repository`,
+  les deux paquets se recuperent sur un poste connecte de meme systeme et meme
+  architecture, puis s installent depuis un depot local.
+- La detection du serveur cherchait des fichiers sous le dossier du module GliderUI.
+  Le serveur est en realite un module DISTINCT installe a cote, nomme selon la
+  plateforme - GliderUI.Server.win-x64 - et la recherche ne pouvait rien trouver.
+  Le diagnostic et le message de demarrage le nomment desormais precisement, avec
+  la version attendue, et distinguent "serveur absent" de "serveur present mais
+  types non resolus".
 
 
 ## 3.1.0-test1 - 2026-09-17
