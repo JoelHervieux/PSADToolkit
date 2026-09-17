@@ -149,10 +149,25 @@ if (Test-Path -LiteralPath $target) {
 }
 $null = New-Item -Path $target -ItemType Directory -Force
 
-try { [System.IO.Compression.ZipFile]::ExtractToDirectory($package.FullName, $target, $true) }
-catch {
-    # La surcharge a trois arguments n existe pas sur les runtimes plus anciens.
-    Expand-Archive -LiteralPath $package.FullName -DestinationPath $target -Force
+$extracted = $false
+try {
+    # La surcharge a trois arguments, qui autorise l ecrasement, n existe que sur
+    # .NET Core et suffisamment recent.
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($package.FullName, $target, $true)
+    $extracted = $true
+} catch {
+    Write-Verbose ('Extraction directe indisponible : {0}' -f $_.Exception.Message)
+}
+if (-not $extracted) {
+    # Expand-Archive n accepte que l extension .zip : un .nupkg, ou un fichier
+    # renomme par le navigateur, doit d abord etre copie sous ce nom.
+    $temporary = Join-Path ([System.IO.Path]::GetTempPath()) ('adt-gli-' + [Guid]::NewGuid().ToString('N') + '.zip')
+    try {
+        Copy-Item -LiteralPath $package.FullName -Destination $temporary -Force
+        Expand-Archive -LiteralPath $temporary -DestinationPath $target -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 $manifestPath = Join-Path $target ($expectedName + '.psd1')

@@ -20,9 +20,14 @@ laissait entendre.
   resout, au lieu de rendre la main sans rien dire.
   Les cinq branches - cas nominal, reinstallation sans -Force, aucun paquet
   valide, mauvaise version, chemin inexistant - ont ete exercees sur un paquet
-  simule. Le calcul du dossier d installation evaluait le chemin Windows avant la
-  branche Linux, ou `GetFolderPath('MyDocuments')` rend une chaine vide : corrige,
-  avec repli sur `$HOME\Documents` quand le profil est redirige ou absent.
+  simule. Ces essais ont revele deux defauts, corriges : le calcul du dossier
+  d installation evaluait le chemin Windows avant la branche Linux, ou
+  `GetFolderPath('MyDocuments')` rend une chaine vide - avec en plus un repli sur
+  `$HOME\Documents` quand le profil est redirige ou absent ; et le repli
+  d extraction appelait `Expand-Archive`, qui n accepte que l extension `.zip` et
+  aurait donc refuse le `.nupkg` sur les runtimes depourvus de la surcharge
+  d ecrasement de `ZipFile.ExtractToDirectory`. Le paquet est desormais copie sous
+  une extension `.zip` temporaire avant extraction.
 - README : la procedure hors ligne passe par ce script et l adresse de
   telechargement directe, plus simple que `Save-PSResource` sur un poste connecte.
   La voie par depot local reste documentee en solution de rechange.
