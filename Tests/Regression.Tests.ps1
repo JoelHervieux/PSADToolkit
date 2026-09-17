@@ -43,9 +43,24 @@ Describe 'Escaping and CSV input' {
             @(Get-ADTCsvRowGroups -Row $rows[2]).Count | Should -Be 3
         }
     }
-    It 'Rejects extra CSV cells instead of dropping groups' {
+    It 'Folds extra CSV cells back into Groups instead of dropping groups' {
+        # Beaucoup d exports utilisent ; comme separateur de colonnes ET de groupes,
+        # sans guillemets. Les cellules excedentaires sont alors rattachees a Groups
+        # plutot que perdues : c est le cas couvert par
+        # Examples/Tests-CSV/03-groupes-non-quotes.csv.
         $path=Join-Path $TestDrive 'bad.csv'
         "GivenName;Surname;Groups`nA;B;G1;G2" | Set-Content $path
+        InModuleScope PSADToolkit -Parameters @{Path=$path} {
+            param($Path)
+            Test-ADTCsvShape -Path $Path -Delimiter ';' | Should -BeTrue
+            $rows=@(Read-ADTFlexibleCsv -Path $Path -Delimiter ';')
+            $rows[0].Groups | Should -Be 'G1;G2'
+            @(Get-ADTCsvRowGroups -Row $rows[0]).Count | Should -Be 2
+        }
+    }
+    It 'Rejects extra CSV cells when no Groups column can absorb them' {
+        $path=Join-Path $TestDrive 'sans-groupes.csv'
+        "GivenName;Surname;Department`nA;B;TI;surplus" | Set-Content $path
         InModuleScope PSADToolkit -Parameters @{Path=$path} {
             param($Path)
             { Test-ADTCsvShape -Path $Path -Delimiter ';' } | Should -Throw '*cellules*'

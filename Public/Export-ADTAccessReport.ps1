@@ -88,8 +88,9 @@
     $summary += New-Object PSObject -Property @{ Indicateur = ('Comptes inactifs (> {0} j)' -f $DaysInactive); Valeur = $inactive.Count }
     $summary += New-Object PSObject -Property @{ Indicateur = 'Comptes a privileges';           Valeur = $privilegedUsers }
     $summary += New-Object PSObject -Property @{ Indicateur = 'Mots de passe sans expiration';  Valeur = $neverExpires.Count }
-    $summary += New-Object PSObject -Property @{ Indicateur = 'Genere le';                      Valeur = (Get-Date -Format 'yyyy-MM-dd HH:mm') }
-    $summary += New-Object PSObject -Property @{ Indicateur = 'Genere par';                     Valeur = ('{0}\{1}' -f $env:USERDOMAIN, $env:USERNAME) }
+    # Date de generation au format regional du poste, comme tout ce que PSADToolkit affiche.
+    $summary += New-Object PSObject -Property @{ Indicateur = 'Genere le';                      Valeur = (Format-ADTDateTime -Value (Get-Date)) }
+    $summary += New-Object PSObject -Property @{ Indicateur = 'Genere par';                     Valeur = (Get-ADTOperatorName) }
 
     $summary = $summary | Select-Object Indicateur, Valeur
 

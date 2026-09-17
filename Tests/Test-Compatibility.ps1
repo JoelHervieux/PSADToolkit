@@ -29,5 +29,11 @@ foreach ($file in $targets) {
     if ($text -match '(?im)^\s*[^#\r\n].*(\[pscustomobject\]|\[ordered\]|\$PSScriptRoot|\bConvertTo-Json\b|\bGet-CimInstance\b|\bImport-PowerShellDataFile\b|\bGet-Content\b[^\r\n]*-Raw\b)') {
         throw ('API moderne dans un fichier cible PS 2.0 : '+$file.Name)
     }
+    # Operateurs apparus en PowerShell 3.0. PSUseCompatibleSyntax ne les signale pas
+    # toujours, et ils s analysent sans erreur sur un moteur moderne : -shl a ete
+    # introduit par megarde dans la conversion des horaires de connexion (3.1.0).
+    if ($text -match '(?i)(\s-shl\s|\s-shr\s|\s-in\s|\s-notin\s)') {
+        throw ('Operateur PowerShell 3.0 dans un fichier cible PS 2.0 : '+$file.Name)
+    }
 }
 'PASS: syntaxe native, regles PS 2.0 / 5.1, aucune erreur PSScriptAnalyzer sur les fichiers cibles.'

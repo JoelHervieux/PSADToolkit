@@ -1,5 +1,74 @@
 ﻿# Changements
 
+## 3.1.0-test1 - 2026-09-17
+
+Console d administration Active Directory. Aucune fonction, aucun parametre et aucun onglet existant n est retire ni renomme : la 3.1.0 est additive.
+
+### Interface
+
+- Nouvel onglet **Console AD**, place en premier : arborescence du domaine a gauche, contenu de l unite selectionnee a droite. L arborescence couvre les unites d organisation et les conteneurs integres ; elle est lue en une requete LDAP, le contenu d une unite ne l est qu a sa selection.
+- Selection multiple dans la liste : toutes les actions en lot portent sur la selection.
+- Menus contextuels dans l arborescence et dans la liste, double-clic pour ouvrir les proprietes. Ces interactions sont branchees de maniere tolerante et **chaque action reste accessible par un bouton** : une version de GliderUI qui n exposerait pas `ContextMenu` ou `DoubleTapped` degrade l ergonomie, pas les fonctionnalites.
+- Feuille de proprietes en sections : General, Compte, Organisation, Adresse, Profil, Groupes, Horaires de connexion, Objet. Seules les proprietes reellement modifiees sont ecrites.
+- Editeur graphique des horaires de connexion : grille 7 jours x 24 heures, bascule par jour, par heure ou par modele.
+- Recherche par nom, `sAMAccountName`, UPN, nom affiche, courriel ou description, dans l unite selectionnee ou dans tout le domaine, avec filtre par type d objet.
+- Le clic droit sur une unite propose **Importer un CSV dans cette OU** : la console pre-remplit l OU de destination de l onglet d import et y bascule, plutot que de dupliquer l apercu d import.
+- L interface est decoupee en `UI\Common.ps1`, `UI\LogonHours.ps1`, `UI\Dialogs.ps1`, `UI\Properties.ps1` et `UI\Console.ps1`, charges par `Start-PSADToolkit.ps1`. Les sept onglets historiques et leur schema `$specs` sont inchanges.
+- La console n ecrit jamais dans l annuaire par un chemin qui lui serait propre : toutes ses ecritures passent par `Invoke-ADTUiCommand` et par les fonctions publiques du module, donc par la meme validation, la meme simulation, la meme confirmation, la meme journalisation et la meme grille de resultats que les onglets.
+
+### Formats regionaux
+
+- Tous les jours, dates et heures affiches suivent la culture de la machine : grilles, proprietes, grille des horaires, rapport HTML. `Format-ADTUiCellValue` remplace la conversion implicite en chaine, qui rendait un format invariant.
+- Les booleens affiches dans les grilles se lisent Oui / Non. L export CSV conserve les valeurs brutes.
+- Le journal garde volontairement un horodatage ISO 8601, triable et lisible de la meme facon sur tous les postes qui relisent un fichier d audit. La date inscrite dans la description d un compte lors d un depart reste ISO pour la meme raison.
+- `Test-ADTUses24HourClock` retire les litteraux du motif horaire avant de l analyser : le francais du Canada utilise `HH 'h' mm`, dont le h entre apostrophes aurait ete pris pour un specificateur d heure sur 12.
+
+### Nouvelles fonctions publiques
+
+- Lecture : `Get-ADTDirectoryChild`, `Find-ADTDirectoryObject`, `Get-ADTObjectProperty`, `Get-ADTGroupMember`, `Get-ADTPasswordPolicy`, `Get-ADTUserLogonHours`.
+- Ecriture : `Set-ADTUser`, `Set-ADTAccountState`, `Set-ADTUserPassword`, `Set-ADTUserLogonHours`, `Set-ADTGroupMember`, `New-ADTGroup`, `New-ADTOrganizationalUnit`, `Set-ADTOrganizationalUnit`, `Move-ADTObject`, `Remove-ADTObject`.
+- Outils : `New-ADTPassword`, `New-ADTLogonHourSchedule`, `New-ADTCredentialDocument`.
+- Toutes prennent en charge `-WhatIf`, journalisent et rendent une ligne de statut par objet traite, comme les fonctions historiques.
+
+### Horaires de connexion
+
+- `logonHours` est manipule par un masque de 168 caracteres en **heure locale**. La conversion vers le temps universel attendu par l annuaire applique le decalage du poste, comme le fait la console Microsoft : un horaire 8 h - 18 h saisi a Montreal s affiche bien 8 h - 18 h dans ADUC sur le meme fuseau. Les fuseaux a la demi-heure sont arrondis a l heure, faute de resolution plus fine dans l attribut.
+- Un masque entierement autorise efface l attribut, ce qui correspond a Toutes les heures dans la console Microsoft.
+- Un horaire n autorisant aucune heure exige `-AllowNoLogonWindow` : le compte ne pourrait plus ouvrir de session.
+- L application aux membres d un groupe affiche la liste avant l ecriture et permet d **exclure** des comptes, qui conservent alors leur horaire.
+
+### Mots de passe
+
+- `New-ADTRandomPassword` accepte le choix des classes de caracteres, le jeu de symboles et les caracteres ambigus. Le comportement par defaut est inchange pour les appels existants.
+- Le tirage rejette les valeurs de la tranche incomplete de l espace 32 bits : un simple modulo favorisait les premiers caracteres du jeu.
+- La strategie du domaine est lue, y compris une strategie affinee applicable au compte (`msDS-ResultantPSO`), et la longueur demandee est relevee au minimum exige. PSADToolkit ne descend jamais sous 12 caracteres.
+- `New-ADTCredentialDocument` produit une fiche HTML de remise : nom, identifiant, UPN, domaine, courriel, mot de passe temporaire et consignes. Sa generation est une action volontaire de l administrateur, jamais automatique. **Le mot de passe n est jamais journalise.**
+
+### Backend
+
+- `Private\DirectoryConsole.ps1` : recherche parametrable (portee, attributs, plafond), enumeration d un conteneur sur un seul niveau, fiche d attributs complete, membres directs d un groupe, strategie de mot de passe.
+- `Private\DirectoryWrite.ps1` : ecriture d attributs, indicateurs de `userAccountControl`, expiration de compte, deverrouillage, `logonHours`, creation de groupe et d unite, renommage, suppression, protection contre la suppression accidentelle.
+- `Private\LogonHours.ps1`, `Private\Format-ADTDisplay.ps1`, `Private\ObjectStatus.ps1`, `Private\Initialize-ADTConnection.ps1`.
+- Les membres d un groupe sont lus par `memberOf` plutot que par l attribut `member` : au-dela d environ 1500 entrees, `member` est renvoye par tranches et une lecture naive perdrait des membres sans le signaler. Le groupe principal est ajoute a partir de `primaryGroupID`.
+- Le tout reste compatible Windows PowerShell 2.0 : ni `[pscustomobject]`, ni `::new()`, ni operateur apparu en 3.0.
+
+### Garde-fous
+
+- Suppression : un conteneur non vide exige `-Recursive` et le nombre d objets emportes est annonce ; un objet protege contre la suppression accidentelle exige `-RemoveProtection`.
+- Deplacement : une unite ne peut pas etre deplacee dans elle-meme ni dans l une de ses sous-unites, et la destination doit etre un conteneur.
+- Groupes : le retrait d un membre de son groupe principal est refuse avec un message explicite plutot qu avec l echec brut du controleur.
+- Recherche : le terme saisi est echappe avant l ajout des jokers, et un nom d attribut invalide est refuse. Une parenthese ou une etoile saisie par l operateur est du texte, pas de la syntaxe LDAP.
+- `-WhatIf` et la confirmation recapitulative s appliquent a toutes les ecritures de la console, simulation cochee par defaut.
+
+### Tests
+
+- `Tests\Console.Tests.ps1` : 49 controles sans annuaire, dont la disposition d octets de `logonHours` telle que documentee par Active Directory, l aller-retour du masque pour tous les fuseaux, les formats regionaux, le generateur, l echappement des filtres, les garde-fous et l absence du mot de passe dans le journal.
+- `Tests\ConsoleInterface.Tests.ps1` : analyse syntaxique de l interface sans lancer GliderUI. Verifie que toute ecriture passe par une fonction exportee, que chaque action de menu contextuel a un bouton equivalent, et que les grilles passent par le formatage regional.
+- `Tests\PSADToolkit.Tests.ps1` derive desormais la liste des fonctions du manifeste : ajouter une fonction publique sans aide integree ou sans la declarer fait echouer la suite. Cela a revele l absence d exemple dans l aide de `Import-ADTUserFromCsv`, corrigee ici.
+- `Tests\Test-Compatibility.ps1` refuse en plus `-shl`, `-shr`, `-in` et `-notin` dans les fichiers cibles PowerShell 2.0. Ces operateurs s analysent sans erreur sur un moteur moderne ; `-shl` avait ete introduit par megarde dans la conversion des horaires.
+- `Tests\Regression.Tests.ps1` : le controle des cellules CSV excedentaires exigeait un refus, alors que le comportement documente - et couvert par `Examples\Tests-CSV\03-groupes-non-quotes.csv` - est de rattacher ces cellules a la colonne `Groups`. Le test verifie desormais cette reconstitution, et le refus est verifie sur un CSV sans colonne `Groups`.
+
+
 ## 3.0.0-test4 - 2026-09-17
 
 - README : liens de telechargement de PowerShell 7 (versions publiees, commande winget, procedure Microsoft) dans l etape de demarrage, le tableau de compatibilite et les references. Precision que PowerShell 7 cohabite avec Windows PowerShell 5.1 au lieu de le remplacer.

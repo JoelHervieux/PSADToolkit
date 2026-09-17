@@ -1,8 +1,8 @@
-﻿# PSADToolkit 3.0.0-test4
+﻿# PSADToolkit 3.1.0-test1
 
-Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
+Administration Active Directory avec interface graphique en français : **console d'arborescence** à la manière d'« Utilisateurs et ordinateurs Active Directory », import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.0.0-test4` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.1.0-test1` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
@@ -32,7 +32,8 @@ Administration Active Directory avec interface graphique en français, import CS
 4. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
 5. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
 6. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
-7. Choisir un onglet, remplir les champs, puis cliquer sur **Exécuter**. Pour les modifications AD, la **simulation est cochée par défaut**. Décocher seulement après vérification : une confirmation récapitule la cible et l'action.
+7. Ouvrir l'onglet **Console AD** et cliquer sur **Charger / actualiser** pour afficher l'arborescence du domaine. Les autres onglets restent disponibles pour les traitements en lot.
+8. Pour toute modification d'Active Directory, la **simulation est cochée par défaut**, dans la console comme dans les onglets. Décocher seulement après vérification : une confirmation récapitule la cible, l'action et la liste des objets concernés.
 
 Les résultats s'affichent dans le tableau. Agrandir la fenêtre ou défiler horizontalement pour lire toutes les colonnes. Vérifier **Status**, **Error** et **Messages**. `Partiel` signifie que certaines modifications ont déjà été appliquées : examiner l'état du compte avant de relancer.
 
@@ -64,10 +65,49 @@ La compatibilité ci-dessus est une **cible technique**, pas une certification o
 - Une session élevée n'est normalement pas nécessaire pour les opérations AD déléguées. Les modifications d'un partage ou de ses ACL utilisent l'identité de la **session Windows courante**, même si un autre compte est fourni pour LDAP.
 - Journal par défaut : `%LOCALAPPDATA%\PSADToolkit\PSADToolkit.log`. Paramètre `-LogPath` disponible en ligne de commande. Les erreurs de journalisation sont affichées comme avertissements. Aucun mot de passe n'est volontairement écrit dans ce journal.
 
+## La console Active Directory
+
+L'onglet **Console AD** est le point d'entrée quotidien. Il reprend l'organisation d'« Utilisateurs et ordinateurs Active Directory » : l'arborescence du domaine à gauche, le contenu de l'unité sélectionnée à droite.
+
+- **Arborescence** : domaine, unités d'organisation et conteneurs intégrés (`Builtin`, `Users`, `Computers`). Elle est lue en une seule requête LDAP ; le contenu d'une unité, lui, n'est lu qu'à sa sélection.
+- **Liste** : utilisateurs, groupes, ordinateurs et sous-unités, avec leur état (actif, désactivé, verrouillé, expiré, mot de passe à changer). **Ctrl** et **Maj** sélectionnent plusieurs objets ; toutes les actions en lot portent sur la sélection.
+- **Double-clic** sur un objet : sa feuille de propriétés.
+- **Clic droit** dans l'arborescence ou dans la liste : les mêmes actions, appliquées à l'élément sélectionné. Le menu contextuel est un confort : **chaque action reste accessible par un bouton**, pour que l'outil reste complet si la version de GliderUI installée n'expose pas les menus contextuels.
+- **Recherche** : par nom, `sAMAccountName`, UPN, nom affiché, courriel ou description, dans l'unité sélectionnée ou dans tout le domaine, avec un filtre par type d'objet. Le terme saisi est échappé avant d'entrer dans le filtre LDAP : une parenthèse ou une étoile y est du texte, pas de la syntaxe.
+
+### Propriétés d'un objet
+
+La feuille de propriétés est organisée en sections : **Général**, **Compte**, **Organisation**, **Adresse**, **Profil**, **Groupes**, **Horaires de connexion** et **Objet**. Seules les propriétés réellement modifiées sont écrites ; un champ laissé tel quel n'est jamais réécrit, et un champ vidé efface l'attribut.
+
+La section **Compte** couvre les options de `userAccountControl` (mot de passe qui n'expire jamais, carte à puce obligatoire, compte sensible non délégué, pré-authentification Kerberos) et l'expiration du compte. Comme dans la console Microsoft, la date saisie est le **dernier jour ouvert** : le compte expire à minuit à la fin de cette journée.
+
+« L'utilisateur ne peut pas changer de mot de passe » est affiché en **lecture seule** : dans Active Directory cette option est portée par les autorisations de l'objet et non par `userAccountControl`. PSADToolkit ne la modifie pas.
+
+### Horaires de connexion
+
+L'attribut `logonHours` se gère dans une grille de **7 jours × 24 heures**. Cliquer une case bascule une heure, cliquer un jour bascule la ligne, cliquer une heure bascule la colonne ; des modèles couvrent les cas courants. Les jours sont présentés dans l'ordre et la langue de la machine, les heures selon sa convention horaire.
+
+**La grille est en heure locale.** Active Directory stocke `logonHours` en temps universel ; PSADToolkit applique le décalage du poste à l'écriture et à la lecture, comme le fait la console Microsoft. Un horaire 8 h – 18 h saisi à Montréal s'affiche bien 8 h – 18 h dans ADUC exécuté sur le même fuseau. Les fuseaux à la demi-heure sont arrondis à l'heure, `logonHours` n'ayant pas de résolution plus fine.
+
+Un horaire s'applique à un compte, à plusieurs comptes sélectionnés, ou **aux membres d'un groupe**. Dans ce dernier cas la liste des membres est affichée avant l'écriture et des comptes peuvent en être **exclus** pour conserver un horaire différent. Un horaire n'autorisant aucune heure empêche toute ouverture de session : il demande une confirmation supplémentaire.
+
+### Mots de passe et document de remise
+
+Le générateur est configurable : longueur, majuscules, minuscules, chiffres, caractères spéciaux, caractères ambigus (`O`, `0`, `l`, `1`, `I`) exclus par défaut. Il lit la **stratégie de mot de passe du domaine** — y compris une stratégie affinée applicable au compte, sur un domaine de niveau 2008 ou supérieur — et relève la longueur demandée si elle est inférieure au minimum exigé. PSADToolkit ne descend jamais sous 12 caractères, même si le domaine l'autorise.
+
+À la création d'un compte ou à la réinitialisation d'un mot de passe, un **document de remise** HTML peut être produit : nom, identifiant, UPN, domaine, courriel et mot de passe temporaire, avec les consignes de première connexion. Cette génération est une **action volontaire** : elle n'est jamais déclenchée d'office, l'administrateur coche la case puis choisit le dossier de destination. Le fichier contient un mot de passe en clair — choisir un dossier à accès restreint et le détruire après remise. **Le mot de passe n'apparaît à aucun moment dans le journal de PSADToolkit.**
+
+### Formats régionaux
+
+Tous les jours, dates et heures **affichés** suivent le format régional de la machine qui exécute l'application : grilles de résultats, feuilles de propriétés, grille des horaires, rapport HTML. Aucun format n'est codé en dur.
+
+Deux exceptions délibérées : le **journal** garde un horodatage ISO 8601 (`AAAA-MM-JJ hh:mm:ss`), triable et lisible de la même façon sur tous les postes qui relisent un fichier d'audit ; et la **date inscrite dans la description** d'un compte lors d'un départ reste ISO, pour qu'elle ne dépende pas du poste qui a fait l'opération.
+
 ## Les onglets
 
 | Onglet | Action |
 |---|---|
+| Console AD | Arborescence du domaine, contenu des unités, recherche, propriétés, création, déplacement, suppression, activation, déverrouillage, groupes, horaires de connexion et mots de passe |
 | Créer un compte | Prénom, nom, OU, identifiant automatique ou imposé, groupes, courriel, service, fonction, dossier personnel facultatif |
 | Importer un CSV | Aperçu obligatoire avant lancement, sélection de l’OU dans l’arborescence, création facultative d’une sous-OU par département, lecture de tous les groupes, choix `;` ou `,` et option d’ignorer les identifiants existants |
 | Groupes | Ajouter ou retirer plusieurs utilisateurs à plusieurs groupes ; listes séparées par `;` |
@@ -119,6 +159,36 @@ Export-ADTAccessReport -Path 'C:\Rapports\AD.html' `
     -Server 'dc01.contoso.local'
 ```
 
+Les fonctions de la console s'utilisent aussi en ligne de commande :
+
+```powershell
+# Naviguer et chercher
+Get-ADTDirectoryChild -Path 'OU=Employes,DC=contoso,DC=local' |
+    Format-Table Name, ObjectType, Status
+Find-ADTDirectoryObject -SearchTerm 'tremblay' -Type User
+Get-ADTObjectProperty -Identity 'jhervieux' | Format-List
+
+# Etat d'un compte
+Set-ADTAccountState -Identity 'jhervieux' -Action Unlock
+Set-ADTUser -Identity 'jhervieux' -Title 'Analyste principal' -Department 'TI' -WhatIf
+
+# Horaires de connexion : un horaire, puis une portee
+$horaire = New-ADTLogonHourSchedule -Day Monday,Tuesday,Wednesday,Thursday,Friday -StartHour 8 -EndHour 18
+Set-ADTUserLogonHours -Identity 'jhervieux' -Schedule $horaire.Mask -WhatIf
+Set-ADTUserLogonHours -Group 'GS-Ventes' -ExcludeIdentity 'dgagnon' -Schedule $horaire.Mask -WhatIf
+
+# Mot de passe, puis document de remise - deux gestes distincts
+Get-ADTPasswordPolicy -Identity 'jhervieux'
+Set-ADTUserPassword -Identity 'jhervieux' -Length 20 -Unlock |
+    New-ADTCredentialDocument -Path 'C:\Remises'
+
+# Groupes et unites d'organisation
+Get-ADTGroupMember -Identity 'GS-VPN' | Format-Table SamAccountName, Status
+Set-ADTGroupMember -Identity 'GS-VPN' -Member 'jhervieux' -WhatIf
+New-ADTOrganizationalUnit -Path 'DC=contoso,DC=local' -Name 'Stagiaires' -WhatIf
+Move-ADTObject -Identity 'jhervieux' -TargetPath 'OU=Stagiaires,DC=contoso,DC=local' -WhatIf
+```
+
 Pour utiliser un autre compte : `$cred = Get-Credential`, puis ajouter `-Credential $cred` à la commande. Retirer `-WhatIf` pour appliquer les modifications après revue. `Get-Help New-ADTUser -Full` et les autres aides décrivent les paramètres.
 
 ### Version autonome
@@ -156,6 +226,10 @@ Invoke-Pester -Path .\Tests -Output Detailed
 ```
 
 `Test-VersionConsistency.ps1` échoue si un fichier annonce une version différente de celle du manifeste. Le lancer avant toute étiquette git, comme indiqué dans `VERSIONING.md`.
+
+`Tests\Console.Tests.ps1` couvre la console sans annuaire : conversion `logonHours` dans les deux sens et pour tous les fuseaux, formats régionaux, générateur de mots de passe, échappement des filtres de recherche, garde-fous de suppression et de déplacement, et absence du mot de passe dans le journal. Il vérifie aussi qu'aucune source du module n'emploie d'opérateur apparu en PowerShell 3.0 : `-shl`, `-shr`, `-in` et `-notin` s'analysent sans erreur sur un moteur moderne et échouent sous Windows PowerShell 2.0.
+
+`Tests\ConsoleInterface.Tests.ps1` analyse l'arbre syntaxique de l'interface sans lancer GliderUI : toute écriture passe bien par une fonction exportée du module, chaque action du menu contextuel a bien un bouton équivalent, et les grilles mettent en forme leurs valeurs par la culture.
 
 `Test-ParameterShadowing.ps1` échoue si une boucle `foreach` réutilise le nom d'un paramètre typé. Les noms de variables PowerShell sont insensibles à la casse et la contrainte de type du paramètre vaut pour toute la fonction : la boucle se casse alors sur une conversion impossible, comme en 3.0.0-test2 où la grille de résultats ne pouvait plus s'afficher.
 

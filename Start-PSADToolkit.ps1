@@ -35,9 +35,21 @@ if (-not (Get-Module -ListAvailable -Name GliderUI)) {
 Import-Module GliderUI -ErrorAction Stop
 Import-Module (Join-Path $script:Root 'PSADToolkit.psd1') -Force -ErrorAction Stop
 # Helpers prives du module : l apercu d import doit calculer l OU cible et les groupes
-# exactement comme l import lui-meme, et le selecteur d OU reutilise le backend LDAP.
-. (Join-Path $script:Root 'Private\DirectoryBackend.ps1')
-. (Join-Path $script:Root 'Private\CsvHelpers.ps1')
+# exactement comme l import lui-meme, la console reutilise le backend LDAP, et les
+# formats regionaux comme les horaires de connexion sont partages avec les fonctions
+# publiques pour que l affichage et l ecriture ne divergent jamais.
+foreach ($helper in @(
+        'DirectoryBackend.ps1', 'DirectoryConsole.ps1', 'DirectoryWrite.ps1',
+        'CsvHelpers.ps1', 'Format-ADTDisplay.ps1', 'LogonHours.ps1', 'ObjectStatus.ps1'
+    )) {
+    . (Join-Path $script:Root (Join-Path 'Private' $helper))
+}
+
+# Console d administration : un fichier par domaine fonctionnel. L ordre importe
+# peu, les fonctions ne sont appelees qu une fois la fenetre construite.
+foreach ($module in @('Common.ps1', 'LogonHours.ps1', 'Dialogs.ps1', 'Properties.ps1', 'Console.ps1')) {
+    . (Join-Path $script:Root (Join-Path 'UI' $module))
+}
 
 $script:Rows = @()
 $script:Operation = ''
@@ -101,14 +113,33 @@ function New-ADTUiDataGrid {
     return $grid
 }
 
+function Format-ADTUiCellValue {
+    # Valeur telle qu elle doit APPARAITRE a l ecran. Les dates suivent le format
+    # regional de la machine plutot qu une conversion implicite en chaine, qui rend
+    # un format invariant, et les booleens se lisent en francais.
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [datetime]) { return (Format-ADTDateTime -Value $Value) }
+    if ($Value -is [bool]) { if ($Value) { return 'Oui' } else { return 'Non' } }
+    return [string]$Value
+}
+
 function New-ADTUiDataSourceList {
-    param([hashtable[]]$Column, $Row)
+    # $Extra ajoute des valeurs a la source sans leur donner de colonne : la grille
+    # transporte ainsi le DN et la classe de chaque ligne, dont les actions ont
+    # besoin, sans les afficher.
+    param([hashtable[]]$Column, $Row, [string[]]$Extra)
     $items = [GliderUI.System.Collections.ObjectModel.ObservableCollection[DataSource]]::new()
     foreach ($item in $Row) {
         $values = @{}
         foreach ($definition in $Column) {
             $path = [string]$definition['Path']
-            $values[$path] = [string]$item.$path
+            $values[$path] = Format-ADTUiCellValue $item.$path
+        }
+        foreach ($path in @($Extra)) {
+            if (-not $path -or $values.ContainsKey($path)) { continue }
+            if (-not $item.PSObject.Properties[$path]) { continue }
+            $values[$path] = Format-ADTUiCellValue $item.$path
         }
         $items.Add([DataSource]$values)
     }
@@ -701,14 +732,14 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.0.0-test4 | Administration Active Directory"
-        Width="1200" Height="920">
+        Title="PSADToolkit 3.1.0-test1 | Administration Active Directory"
+        Width="1360" Height="1000">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 
     <Border Grid.Row="0" Background="#162840" Padding="24,14">
       <StackPanel Orientation="Horizontal" Spacing="18">
         <TextBlock Text="PSADToolkit" Foreground="White" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
-        <TextBlock Text="Comptes, acces et audits Active Directory" Foreground="#BED4ED" VerticalAlignment="Center" />
+        <TextBlock Text="Console d administration, comptes, acces et audits Active Directory" Foreground="#BED4ED" VerticalAlignment="Center" />
       </StackPanel>
     </Border>
 
@@ -749,7 +780,7 @@ $mainXaml = @'
       <Button Grid.Column="2" x:Name="export_button" Content="Exporter les resultats CSV" IsEnabled="False" />
     </Grid>
 
-    <Border Grid.Row="4" Margin="16,8,16,0" MinHeight="220"
+    <Border Grid.Row="4" Margin="16,8,16,0" MinHeight="150"
             BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="4">
       <ContentControl x:Name="grid_host" />
     </Border>
@@ -760,7 +791,7 @@ $mainXaml = @'
 
     <Grid Grid.Row="6" Margin="16,10,16,16" ColumnDefinitions="*,Auto" ColumnSpacing="16">
       <TextBlock Grid.Column="0" x:Name="status_text" VerticalAlignment="Center" TextWrapping="Wrap"
-                 Text="Pret. Commencer par tester la connexion." />
+                 Text="Pret. Tester la connexion, puis charger l arborescence dans l onglet Console AD." />
       <ProgressBar Grid.Column="1" x:Name="progress" Width="220" VerticalAlignment="Center" />
     </Grid>
   </Grid>
@@ -817,6 +848,18 @@ $exportButton.AddClick({
     })
 
 #--- Onglets ------------------------------------------------------------------
+
+# La console d administration est le premier onglet : c est par elle qu on navigue
+# dans le domaine. Les onglets historiques restent inchanges derriere.
+$consoleTab = [TabItem]::new()
+$consoleTab.Header = 'Console AD'
+$consoleTab.Content = New-ADTUiConsoleTab -Busy @($tabs, $connectionPanel)
+$tabs.Items.Add($consoleTab) | Out-Null
+
+# Registre des champs de chaque onglet : la console pre-remplit l OU de destination
+# de l import CSV et bascule dessus, plutot que de dupliquer l apercu d import.
+$script:TabFields = @{}
+$script:TabIndex = @{}
 
 foreach ($spec in $specs) {
     $fields = @{}
@@ -901,6 +944,8 @@ foreach ($spec in $specs) {
     $tab = [TabItem]::new()
     $tab.Header = [string]$spec.Title
     $tab.Content = $content
+    $script:TabFields[[string]$spec.Command] = $fields
+    $script:TabIndex[[string]$spec.Command] = $tabs.Items.Count
     $tabs.Items.Add($tab) | Out-Null
 }
 
