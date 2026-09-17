@@ -15,6 +15,10 @@ BeforeAll {
     Import-Module $ManifestPath -Force -ErrorAction Stop
 }
 
+# Le manifeste fait autorite : ajouter une fonction publique sans l y declarer doit
+# faire echouer la suite, pas passer inapercu.
+$ManifestFunctions = @((Import-PowerShellDataFile -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'PSADToolkit.psd1')).FunctionsToExport)
+
 Describe 'Structure du module' {
 
     It 'Le manifeste est valide' {
@@ -27,7 +31,7 @@ Describe 'Structure du module' {
         $manifest.PowerShellVersion | Should -Be '2.0'
     }
 
-    It 'Exporte les 8 fonctions publiques attendues' {
+    It 'Exporte les 8 fonctions publiques historiques' {
         $expected = @(
             'Test-ADTPrerequisite','New-ADTUser','Import-ADTUserFromCsv',
             'Set-ADTUserGroupMembership','Start-ADTUserOffboarding',
@@ -37,17 +41,47 @@ Describe 'Structure du module' {
         foreach ($name in $expected) { $actual | Should -Contain $name }
     }
 
+    It 'Exporte les fonctions de la console d administration' {
+        $expected = @(
+            'Get-ADTDirectoryChild','Find-ADTDirectoryObject','Get-ADTObjectProperty',
+            'Get-ADTGroupMember','Get-ADTPasswordPolicy','Get-ADTUserLogonHours',
+            'Set-ADTUser','Set-ADTAccountState','Set-ADTUserPassword','Set-ADTUserLogonHours',
+            'Set-ADTGroupMember','New-ADTGroup','New-ADTOrganizationalUnit',
+            'Set-ADTOrganizationalUnit','Move-ADTObject','Remove-ADTObject',
+            'New-ADTPassword','New-ADTLogonHourSchedule','New-ADTCredentialDocument'
+        )
+        $actual = (Get-Command -Module PSADToolkit -CommandType Function).Name
+        foreach ($name in $expected) { $actual | Should -Contain $name }
+    }
+
+    It 'N exporte que ce que le manifeste declare' {
+        $manifest = Import-PowerShellDataFile -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'PSADToolkit.psd1')
+        $actual = @((Get-Command -Module PSADToolkit -CommandType Function).Name)
+        $actual.Count | Should -Be @($manifest.FunctionsToExport).Count
+        foreach ($name in $actual) { $manifest.FunctionsToExport | Should -Contain $name }
+    }
+
+    It 'Nomme chaque fichier public comme la fonction qu il definit' {
+        # PSADToolkit.psm1 exporte d apres le nom de fichier : un fichier mal nomme
+        # laisserait la fonction inaccessible malgre le manifeste.
+        $folder = Join-Path (Split-Path -Parent $PSScriptRoot) 'Public'
+        foreach ($file in (Get-ChildItem -Path $folder -Filter '*.ps1')) {
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
+            $errors | Should -BeNullOrEmpty -Because $file.Name
+            $defined = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false) |
+                ForEach-Object { $_.Name })
+            $defined | Should -Contain $file.BaseName
+        }
+    }
+
     It 'N expose pas les fonctions internes' {
         Get-Command -Module PSADToolkit -Name 'Write-ADTLog' -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
     }
 }
 
 Describe 'Aide integree' {
-    $functions = @(
-        'Test-ADTPrerequisite','New-ADTUser','Import-ADTUserFromCsv',
-        'Set-ADTUserGroupMembership','Start-ADTUserOffboarding',
-        'Get-ADTInactiveAccount','Get-ADTPrivilegedGroupMember','Export-ADTAccessReport'
-    )
+    $functions = $ManifestFunctions
 
     foreach ($function in $functions) {
         It "$function possede une synopsis et un exemple" -TestCases @(@{ ADTFunction=$function }) {

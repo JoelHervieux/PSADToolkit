@@ -9,6 +9,17 @@
     Lorsque -DefaultOU est fourni, il a priorite sur une eventuelle colonne OU du CSV.
     Avec -CreateDepartmentOUs, -DefaultOU devient l OU parente et une sous-OU est
     creee automatiquement pour chaque valeur Department.
+.PARAMETER Path
+    Fichier CSV a importer. Colonnes obligatoires : GivenName et Surname.
+.PARAMETER DefaultOU
+    OU de destination. Prioritaire sur une colonne OU presente dans le CSV.
+.PARAMETER PasswordReportPath
+    Fichier CSV recevant les mots de passe generes. Il contient des mots de passe en
+    clair : choisir un emplacement dont les autorisations conviennent.
+.EXAMPLE
+    Import-ADTUserFromCsv -Path .\nouveaux-employes.csv -DefaultOU 'OU=Employes,DC=contoso,DC=local' -WhatIf
+.EXAMPLE
+    Import-ADTUserFromCsv -Path .\arrivees.csv -DefaultOU 'OU=Employes,DC=contoso,DC=local' -CreateDepartmentOUs -SkipExisting
 #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     param(
