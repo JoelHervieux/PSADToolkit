@@ -1,8 +1,8 @@
-﻿# PSADToolkit 3.1.0-test2
+﻿# PSADToolkit 3.1.0-test3
 
 Administration Active Directory avec interface graphique en français : **console d'arborescence** à la manière d'« Utilisateurs et ordinateurs Active Directory », import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.1.0-test2` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.1.0-test3` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
@@ -45,26 +45,29 @@ L'interface reste réactive pendant les opérations. Une seule opération est au
 
 Un contrôleur de domaine ou un serveur d'administration n'a souvent aucun accès à Internet. `Install-GLIServer` échoue alors sur `Hôte inconnu (www.powershellgallery.com:443)`, et l'interface refuse ensuite de démarrer faute de classes Avalonia.
 
-`Install-GLIServer` accepte `-Repository` : on peut donc l'alimenter depuis un dossier local.
+Un paquet PowerShell Gallery est une archive ZIP servie en HTTPS direct : aucun outil n'est nécessaire sur la machine connectée, un navigateur suffit.
 
-1. Sur un poste **connecté**, de **même système et même architecture**, récupérer les deux paquets dans un dossier. Remplacer `0.4.1` par la version de GliderUI réellement installée, et `win-x64` par `win-arm64` le cas échéant :
+1. Depuis **n'importe quel appareil connecté**, télécharger le paquet du serveur. Remplacer `0.4.1` par la version de GliderUI réellement installée sur la machine cible, et `win-x64` par `win-arm64` le cas échéant :
 
-   ```powershell
-   Save-PSResource -Name GliderUI -Version 0.4.1 -Path C:\Transfert -AsNupkg -TrustRepository
-   Save-PSResource -Name GliderUI.Server.win-x64 -Version 0.4.1 -Path C:\Transfert -AsNupkg -TrustRepository
+   ```
+   https://www.powershellgallery.com/api/v2/package/GliderUI.Server.win-x64/0.4.1
    ```
 
-2. Copier `C:\Transfert` sur la machine cible, puis l'enregistrer comme dépôt local et installer :
+   Si GliderUI lui-même manque, le récupérer de la même façon : `.../package/GliderUI/0.4.1`.
+
+2. Transférer le fichier dans un dossier de la machine cible, puis :
 
    ```powershell
-   Register-PSResourceRepository -Name GliderUILocal -Uri C:\Transfert -Trusted
-   Install-PSResource -Name GliderUI -Repository GliderUILocal -TrustRepository
-   Install-GLIServer -Repository GliderUILocal -TrustRepository
+   .\Tests\Install-GliderUIOffline.ps1 -Path C:\Transfert
    ```
+
+   Le script trouve le paquet quel que soit le nom que le navigateur lui a donné — il ouvre chaque fichier du dossier et cherche le manifeste, ce qui écarte au passage une page d'erreur HTML enregistrée par mégarde. Il refuse une version qui ne correspond pas à celle de GliderUI, extrait au bon endroit, puis **vérifie** que le type `AvaloniaRuntimeXamlLoader` se résout.
 
 3. Fermer **toutes** les fenêtres PowerShell, puis relancer `Lancer.cmd`. Un assembly déjà chargé dans une session ne peut pas y être remplacé.
 
-La version du serveur doit être **exactement** celle du module : `Install-GLIServer` demande le paquet serveur correspondant à la version de GliderUI chargée. Après chaque `Update-PSResource -Name GliderUI`, refaire les deux étapes.
+La version du serveur doit être **exactement** celle du module. Après chaque `Update-PSResource -Name GliderUI`, refaire l'opération.
+
+À défaut, `Install-GLIServer` accepte `-Repository` : on peut aussi enregistrer le dossier de transfert comme dépôt local avec `Register-PSResourceRepository -Name GliderUILocal -Uri C:\Transfert -Trusted`, puis `Install-GLIServer -Repository GliderUILocal -TrustRepository`.
 
 `pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` vérifie à tout moment ce qui est installé et ce qui manque.
 
@@ -266,7 +269,7 @@ Invoke-Pester -Path .\Tests -Output Detailed
 .\Tests\Test-ParameterShadowing.ps1
 ```
 
-`Tests\Test-GliderUI.ps1` est un diagnostic, pas un test : il ne fait partie d'aucune suite et n'écrit rien. Il sert quand l'interface refuse de démarrer.
+`Tests\Test-GliderUI.ps1` et `Tests\Install-GliderUIOffline.ps1` ne sont pas des tests : le premier diagnostique l'installation de GliderUI sans rien modifier, le second installe son serveur depuis un paquet local. Ils ne font partie d'aucune suite et servent quand l'interface refuse de démarrer.
 
 `Test-VersionConsistency.ps1` échoue si un fichier annonce une version différente de celle du manifeste. Le lancer avant toute étiquette git, comme indiqué dans `VERSIONING.md`.
 

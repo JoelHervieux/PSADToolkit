@@ -1,5 +1,33 @@
 ﻿# Changements
 
+## 3.1.0-test3 - 2026-09-17
+
+Suite du deblocage de l installation GliderUI sur un serveur isole. Le poste
+d essai n a ni acces Internet ni proxy - `netsh winhttp show proxy` rend "Acces
+direct" et la resolution DNS de PowerShell Gallery echoue - et `Install-PSResource`
+n expose aucun parametre `-Proxy`, contrairement a ce que la version precedente
+laissait entendre.
+
+- Ajout de `Tests\Install-GliderUIOffline.ps1` : installe le module serveur a
+  partir d un paquet `.nupkg` deja transfere, sans acces reseau et sans
+  PSResourceGet. Un paquet PowerShell Gallery etant une archive ZIP servie en
+  HTTPS direct, un navigateur suffit sur la machine connectee.
+  Le script ouvre chaque fichier du dossier et cherche le manifeste du module
+  plutot que de se fier au nom, ce qui retrouve un fichier renomme par le
+  navigateur et ecarte une page d erreur HTML enregistree par megarde ; il lit la
+  version dans le nuspec et refuse un paquet qui ne correspond pas a la version de
+  GliderUI installee ; il verifie enfin que le type AvaloniaRuntimeXamlLoader se
+  resout, au lieu de rendre la main sans rien dire.
+  Les cinq branches - cas nominal, reinstallation sans -Force, aucun paquet
+  valide, mauvaise version, chemin inexistant - ont ete exercees sur un paquet
+  simule. Le calcul du dossier d installation evaluait le chemin Windows avant la
+  branche Linux, ou `GetFolderPath('MyDocuments')` rend une chaine vide : corrige,
+  avec repli sur `$HOME\Documents` quand le profil est redirige ou absent.
+- README : la procedure hors ligne passe par ce script et l adresse de
+  telechargement directe, plus simple que `Save-PSResource` sur un poste connecte.
+  La voie par depot local reste documentee en solution de rechange.
+
+
 ## 3.1.0-test2 - 2026-09-17
 
 Premier lancement reel de l interface sur un poste Windows : elle s arretait sur
