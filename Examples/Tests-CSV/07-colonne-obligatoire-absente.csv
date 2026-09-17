@@ -1,0 +1,3 @@
+﻿GivenName;Title;Department;OU;Groups
+Luc;Technicien reseau;TI;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+Sophie;Analyste financiere;Comptabilite;OU=Employes,DC=contoso,DC=local;GS-TousEmployes

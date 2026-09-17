@@ -1,6 +1,6 @@
 ﻿<#
-    PSADToolkit 3.0.0-test1 - version autonome
-    Generee le 2026-09-17 13:31 par Build.ps1 - NE PAS MODIFIER A LA MAIN.
+    PSADToolkit 3.0.0-test2 - version autonome
+    Generee le 2026-09-17 13:47 par Build.ps1 - NE PAS MODIFIER A LA MAIN.
 
     Utilisation :
         . .\PSADToolkit-Standalone.ps1     # sourcer le fichier
@@ -1727,7 +1727,7 @@ function Start-ADTUserOffboarding {
 function Test-ADTPrerequisite {
 <#
 .SYNOPSIS
-    Verifie Windows PowerShell, LDAP et l acces au domaine sans exiger RSAT.
+    Verifie le moteur PowerShell, LDAP et l acces au domaine sans exiger RSAT.
 .EXAMPLE
     Test-ADTPrerequisite -Server 'dc01.contoso.local'
 #>
@@ -1736,10 +1736,12 @@ function Test-ADTPrerequisite {
     $messages = New-Object System.Collections.ArrayList
     $ready = $false; $domainName = ''; $mode = ''; $dc = ''; $elevated = $false
     try {
-        if ($PSVersionTable.PSVersion.Major -lt 2) { throw 'Windows PowerShell 2.0 minimum requis.' }
-        if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Ce module LDAP necessite Windows et .NET Framework.' }
-        if ($PSVersionTable.PSVersion.Major -gt 5) { throw 'Lancer avec Windows PowerShell (powershell.exe), pas PowerShell 7 (pwsh.exe).' }
-        Add-Type -AssemblyName System.DirectoryServices -ErrorAction Stop
+        if ($PSVersionTable.PSVersion.Major -lt 2) { throw 'PowerShell 2.0 minimum requis.' }
+        if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Ce module LDAP necessite Windows et System.DirectoryServices.' }
+        # Windows PowerShell 2.0 a 5.1 et PowerShell 7 sur Windows conviennent : la seule
+        # exigence est System.DirectoryServices. L interface graphique, elle, demande 7.4.
+        try { Add-Type -AssemblyName System.DirectoryServices -ErrorAction Stop }
+        catch { if (-not ('System.DirectoryServices.DirectoryEntry' -as [type])) { throw } }
         $domain = Get-ADTNativeDomain -Server $Server -Credential $Credential -ErrorAction Stop
         $domainName = $domain.DNSRoot; $mode = $domain.DomainMode; $dc = $domain.Server; $ready = $true
         [void]$messages.Add('Connexion LDAP reussie. Les droits d ecriture dependent des delegations AD du compte.')

@@ -1,5 +1,11 @@
 ﻿# Changements
 
+## 3.0.0-test2 - 2026-09-17
+
+- Correction du refus `Lancer avec Windows PowerShell (powershell.exe), pas PowerShell 7 (pwsh.exe)` : `Test-ADTPrerequisite` interdisait encore PowerShell 7, ce qui bloquait la connexion au domaine depuis la nouvelle interface. La verification porte desormais sur Windows et sur la disponibilite de `System.DirectoryServices`, quel que soit le moteur.
+- Repli lorsque `Add-Type -AssemblyName System.DirectoryServices` echoue alors que le type reste resolvable, cas possible sous PowerShell 7.
+- Ajout de `Examples\Tests-CSV` : onze fichiers CSV de test et leur mode d emploi. Six doivent passer, cinq doivent etre refuses avant toute ecriture dans l annuaire.
+
 ## 3.0.0-test1 - 2026-09-17
 
 - Interface Windows Forms remplacee par GliderUI (Avalonia). Les sept onglets, le selecteur d OU, l apercu d import, la grille de resultats et les exports sont conserves.

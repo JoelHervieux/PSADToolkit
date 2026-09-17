@@ -1,0 +1,4 @@
+﻿GivenName;Surname;Groups;Department;OU
+Luc;Nadeau;GS-TousEmployes;GS-VPN;TI;OU=Employes,DC=contoso,DC=local
+Sophie;Pelletier;GS-TousEmployes;GS-Comptabilite;GS-VPN;Comptabilite;OU=Employes,DC=contoso,DC=local
+Martin;Boucher;GS-TousEmployes;Ventes;OU=Employes,DC=contoso,DC=local

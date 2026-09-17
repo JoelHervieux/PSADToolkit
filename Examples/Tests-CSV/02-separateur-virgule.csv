@@ -1,0 +1,4 @@
+﻿GivenName,Surname,Title,Department,OU,Groups
+Karine,Ouellet,Chargee de projet,Operations,"OU=Employes,DC=contoso,DC=local","GS-TousEmployes;GS-Operations"
+Denis,Fortin,Magasinier,Entrepot,"OU=Employes,DC=contoso,DC=local",GS-TousEmployes
+Julie,Bergeron,Adjointe administrative,Direction,"OU=Employes,DC=contoso,DC=local","GS-TousEmployes;GS-Direction;GS-VPN"

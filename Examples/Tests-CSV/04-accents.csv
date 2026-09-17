@@ -1,0 +1,6 @@
+﻿GivenName;Surname;Title;Department;OU;Groups
+José;Gagné;Représentant;Ventes;OU=Employes,DC=contoso,DC=local;"GS-TousEmployes;GS-Ventes"
+Anaïs;Côté-Tremblay;Chargée de comptes;Ventes;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+François;O'Brien;Technicien;TI;OU=Employes,DC=contoso,DC=local;"GS-TousEmployes;GS-VPN"
+Björn;Müller;Ingénieur;Ingénierie;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+Élodie;Saïd;Analyste;TI;OU=Employes,DC=contoso,DC=local;GS-TousEmployes

@@ -1,0 +1,5 @@
+﻿GivenName;Surname;Title;Department;Office;EmailAddress;Manager;OU;Groups
+Luc;Nadeau;Technicien reseau;TI;Montreal;lnadeau@contoso.local;;OU=Employes,DC=contoso,DC=local;"GS-TousEmployes;GS-VPN"
+Sophie;Pelletier;Analyste financiere;Comptabilite;Quebec;spelletier@contoso.local;lnadeau;OU=Employes,DC=contoso,DC=local;"GS-TousEmployes;GS-Comptabilite"
+Martin;Boucher;Representant;Ventes;Laval;mboucher@contoso.local;;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+Ariane;Lemieux;Stagiaire;TI;Montreal;alemieux@contoso.local;lnadeau;OU=Stagiaires,DC=contoso,DC=local;"GS-Stagiaires;GS-VPN"

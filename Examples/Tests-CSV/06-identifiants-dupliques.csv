@@ -1,0 +1,4 @@
+﻿GivenName;Surname;SamAccountName;OU
+José;Côté;jcôté;OU=Employes,DC=contoso,DC=local
+Josee;Cote;jcote;OU=Employes,DC=contoso,DC=local
+Martin;Boucher;mboucher;OU=Employes,DC=contoso,DC=local

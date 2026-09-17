@@ -1,8 +1,8 @@
-﻿# PSADToolkit 3.0.0-test1
+﻿# PSADToolkit 3.0.0-test2
 
 Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.0.0-test1` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.0.0-test2` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
@@ -67,6 +67,8 @@ La compatibilité ci-dessus est une **cible technique**, pas une certification o
 Les paramètres avancés, dont `Manager`, `Company`, `Office`, `UserPrincipalNameSuffix` et un mot de passe initial fourni en `SecureString`, restent accessibles en ligne de commande.
 
 ## CSV d'exemple
+
+Le dossier `Examples\Tests-CSV` contient onze fichiers de test — cas nominaux, séparateur `,`, groupes non entourés de guillemets, accents, sous-OU par département, volume, et cinq fichiers qui doivent être refusés. Voir `Examples\Tests-CSV\LISEZMOI.md`.
 
 Le fichier `Examples\nouveaux-employes.csv` utilise `;` comme séparateur. La colonne `Groups` accepte plusieurs groupes séparés par `;`. Les guillemets restent recommandés, mais PSADToolkit 2.1 sait aussi reconstruire les groupes quand un export CSV a utilisé `;` à la fois comme séparateur du fichier et comme séparateur de groupes :
 

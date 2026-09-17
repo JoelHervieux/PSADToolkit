@@ -1,0 +1,5 @@
+﻿GivenName;Surname;Title;OU;Groups
+Luc;Nadeau;Technicien reseau;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+;Pelletier;Analyste financiere;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+Martin;;Representant;OU=Employes,DC=contoso,DC=local;GS-TousEmployes
+Ariane;Lemieux;Commis;;GS-TousEmployes
