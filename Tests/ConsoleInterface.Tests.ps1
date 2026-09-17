@@ -165,23 +165,60 @@ Describe 'Verification des types GliderUI au demarrage' {
                 }, $true))
         $script:PreflightTypes = @(& ([scriptblock]::Create($assignment[0].Right.Extent.Text)))
 
-        # Les types reellement employes par l interface, sous leur nom court :
-        # construction par ::new(), appel statique, et conversion - EventCallback et
-        # DataSource ne sont jamais construits, ils sont obtenus par conversion.
-        $script:UsedShortNames = New-Object System.Collections.ArrayList
-        $builtin = @('PSCustomObject', 'bool', 'char', 'double', 'hashtable', 'int',
-            'ref', 'scriptblock', 'string', 'switch', 'void', 'long', 'byte', 'datetime', 'type')
-        $files = @(Get-Item (Join-Path $root 'Start-PSADToolkit.ps1')) +
+        # Les types employes par l interface, releves dans l ARBRE SYNTAXIQUE : un
+        # nom de type cite dans un commentaire ou dans une chaine XAML n en est pas
+        # un, et une recherche textuelle s y laisserait prendre.
+        $script:UiFiles = @(Get-Item (Join-Path $root 'Start-PSADToolkit.ps1')) +
         @(Get-ChildItem -Path (Join-Path $root 'UI') -Filter '*.ps1')
-        foreach ($file in $files) {
-            $text = [IO.File]::ReadAllText($file.FullName)
-            foreach ($pattern in @('\[([A-Za-z][A-Za-z0-9]*)\]::(?:new|Parse)\(', '\[([A-Za-z][A-Za-z0-9]*)\]@\{', '\[([A-Za-z][A-Za-z0-9]*)\]\$')) {
-                foreach ($match in [regex]::Matches($text, $pattern)) {
-                    $name = $match.Groups[1].Value
-                    if ($builtin -contains $name) { continue }
-                    if (-not $script:UsedShortNames.Contains($name)) { [void]$script:UsedShortNames.Add($name) }
-                }
+        $script:UsedTypeNames = New-Object System.Collections.ArrayList
+        foreach ($file in $script:UiFiles) {
+            $fileAst = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$null)
+            $nodes = @($fileAst.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.TypeExpressionAst] -or
+                        $node -is [System.Management.Automation.Language.TypeConstraintAst]
+                    }, $true))
+            foreach ($node in $nodes) {
+                $name = [string]$node.TypeName.FullName
+                if (-not $name) { continue }
+                if (-not $script:UsedTypeNames.Contains($name)) { [void]$script:UsedTypeNames.Add($name) }
             }
+        }
+
+        # ObservableCollection est generique : son nom simple ne se resout pas, la
+        # verification de demarrage ne peut donc pas le controler.
+        $script:CoverageExclusions = @('GliderUI.System.Collections.ObjectModel.ObservableCollection')
+
+        $script:UsedGliderNames = New-Object System.Collections.ArrayList
+        foreach ($name in $script:UsedTypeNames) {
+            if ($name -notlike 'GliderUI.*') { continue }
+            # Un type generique se presente sous la forme Nom[Argument] : ne garder
+            # que le type porteur, et traiter son argument comme un type a part.
+            $bare = $name
+            $bracket = $bare.IndexOf('[')
+            if ($bracket -ge 0) { $bare = $bare.Substring(0, $bracket) }
+            if (-not $script:UsedGliderNames.Contains($bare)) { [void]$script:UsedGliderNames.Add($bare) }
+        }
+
+        # Noms courts que l interface ne doit plus employer nus.
+        $script:ForbiddenShortNames = @(
+            'Window', 'Button', 'TextBlock', 'TextBox', 'CheckBox', 'ComboBox', 'NumericUpDown',
+            'StackPanel', 'Grid', 'TreeView', 'TreeViewItem', 'TabControl', 'TabItem', 'ScrollViewer',
+            'ContentControl', 'Border', 'DataGrid', 'ColumnDefinition', 'RowDefinition', 'GridLength',
+            'ContextMenu', 'MenuItem', 'Separator', 'Thickness', 'AvaloniaRuntimeXamlLoader',
+            'EventCallback', 'DataSource', 'DataSourcePropertyComparer',
+            'FolderPickerOpenOptions', 'FilePickerOpenOptions', 'FilePickerSaveOptions'
+        )
+    }
+
+    It 'Ecrit les types GliderUI en toutes lettres, jamais en nom court' {
+        # Regression : sur Windows Server 2016 avec GliderUI 0.4.1, la resolution par
+        # nom court via using namespace echoue la ou le nom complet se resout.
+        # L interface s arretait sur "Impossible de trouver le type
+        # [AvaloniaRuntimeXamlLoader]" apres avoir passe la verification de demarrage.
+        foreach ($name in $script:UsedTypeNames) {
+            $script:ForbiddenShortNames | Should -Not -Contain $name `
+                -Because ('[' + $name + '] doit etre ecrit en toutes lettres')
         }
     }
 
@@ -191,24 +228,22 @@ Describe 'Verification des types GliderUI au demarrage' {
         $script:PreflightTypes | Should -Contain 'GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader'
     }
 
-    It 'Couvre tous les types GliderUI que l interface construit' {
+    It 'Couvre tous les types GliderUI que l interface emploie' {
         # Les menus contextuels et le separateur sont volontairement absents : la
         # console les construit dans un try/catch et se rabat sur ses boutons.
         $optional = @('ContextMenu', 'MenuItem', 'Separator')
-        foreach ($name in $script:UsedShortNames) {
-            if ($optional -contains $name) { continue }
-            $covered = $false
-            foreach ($full in $script:PreflightTypes) {
-                if ($full -eq $name -or $full.EndsWith('.' + $name)) { $covered = $true }
-            }
-            $covered | Should -BeTrue -Because ($name + ' est construit par l interface mais absent de la verification de demarrage')
+        foreach ($name in $script:UsedGliderNames) {
+            if ($script:CoverageExclusions -contains $name) { continue }
+            $short = ($name -split '\.')[-1]
+            if ($optional -contains $short) { continue }
+            $script:PreflightTypes | Should -Contain $name `
+                -Because ($name + ' est employe par l interface mais absent de la verification de demarrage')
         }
     }
 
     It 'Ne verifie que des types reellement utilises' {
         foreach ($full in $script:PreflightTypes) {
-            $short = ($full -split '\.')[-1]
-            $script:UsedShortNames | Should -Contain $short -Because ($full + ' est verifie au demarrage mais jamais utilise')
+            $script:UsedGliderNames | Should -Contain $full -Because ($full + ' est verifie au demarrage mais jamais utilise')
         }
     }
 

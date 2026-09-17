@@ -55,14 +55,14 @@ function Get-ADTUiValue {
 
 function New-ADTUiButton {
     param([string]$Text, [int]$Width = 0, [switch]$Accent, [scriptblock]$OnClick, $DisableWhileBusy)
-    $button = [Button]::new()
+    $button = [GliderUI.Avalonia.Controls.Button]::new()
     $button.Content = $Text
     $button.HorizontalContentAlignment = 'Center'
     if ($Width -gt 0) { $button.Width = $Width }
     if ($Accent) { $button.Classes.Add('accent') }
     if ($OnClick) {
         if ($DisableWhileBusy) {
-            $button.AddClick([EventCallback]@{
+            $button.AddClick([GliderUI.EventCallback]@{
                     DisabledControlsWhileProcessing = @($DisableWhileBusy)
                     ScriptBlock                     = $OnClick
                 })
@@ -75,7 +75,7 @@ function New-ADTUiButton {
 
 function New-ADTUiText {
     param([string]$Text, [switch]$Bold, [switch]$Wrap, [string]$Foreground)
-    $block = [TextBlock]::new()
+    $block = [GliderUI.Avalonia.Controls.TextBlock]::new()
     $block.Text = $Text
     if ($Bold) { $block.FontWeight = 'Bold' }
     if ($Wrap) { $block.TextWrapping = 'Wrap' }
@@ -86,7 +86,7 @@ function New-ADTUiText {
 
 function New-ADTUiRow {
     param([object[]]$Child, [int]$Spacing = 8, [string]$Align = 'Left')
-    $panel = [StackPanel]::new()
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $panel.Orientation = 'Horizontal'
     $panel.Spacing = $Spacing
     $panel.HorizontalAlignment = $Align
@@ -96,9 +96,9 @@ function New-ADTUiRow {
 
 function New-ADTUiStack {
     param([object[]]$Child, [int]$Spacing = 10, [int]$Margin = 0)
-    $panel = [StackPanel]::new()
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $panel.Spacing = $Spacing
-    if ($Margin -gt 0) { $panel.Margin = [Thickness]::new($Margin) }
+    if ($Margin -gt 0) { $panel.Margin = [GliderUI.Avalonia.Thickness]::new($Margin) }
     foreach ($item in $Child) { if ($item) { $panel.Children.Add($item) | Out-Null } }
     return $panel
 }
@@ -106,7 +106,7 @@ function New-ADTUiStack {
 function New-ADTUiTextField {
     # Etiquette au-dessus d une zone de saisie. Rend le panneau et la zone.
     param([string]$Label, [string]$Value = '', [switch]$ReadOnly, [int]$Height = 0)
-    $box = [TextBox]::new()
+    $box = [GliderUI.Avalonia.Controls.TextBox]::new()
     $box.Text = $Value
     if ($ReadOnly) { $box.IsReadOnly = $true }
     if ($Height -gt 0) {
@@ -114,7 +114,7 @@ function New-ADTUiTextField {
         $box.AcceptsReturn = $true
         $box.TextWrapping = 'Wrap'
     }
-    $panel = [StackPanel]::new()
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $panel.Spacing = 4
     $panel.Children.Add((New-ADTUiText -Text $Label)) | Out-Null
     $panel.Children.Add($box) | Out-Null
@@ -123,7 +123,7 @@ function New-ADTUiTextField {
 
 function New-ADTUiCheck {
     param([string]$Label, [bool]$Checked = $false, [switch]$Disabled)
-    $check = [CheckBox]::new()
+    $check = [GliderUI.Avalonia.Controls.CheckBox]::new()
     $check.Content = $Label
     $check.IsChecked = $Checked
     if ($Disabled) { $check.IsEnabled = $false }
@@ -134,14 +134,14 @@ function New-ADTUiGridLayout {
     # Grille a colonnes etoilees ou automatiques. $Column contient 'Star', 'Auto'
     # ou une largeur en pixels.
     param([object[]]$Column, [int]$ColumnSpacing = 12, [int]$RowSpacing = 8)
-    $grid = [Grid]::new()
+    $grid = [GliderUI.Avalonia.Controls.Grid]::new()
     $grid.ColumnSpacing = $ColumnSpacing
     $grid.RowSpacing = $RowSpacing
     foreach ($item in $Column) {
-        $definition = [ColumnDefinition]::new()
-        if ($item -is [string] -and $item -eq 'Auto') { $definition.Width = [GridLength]::Auto }
-        elseif ($item -is [string] -and $item -eq 'Star') { $definition.Width = [GridLength]::new(1, 'Star') }
-        else { $definition.Width = [GridLength]::new([double]$item) }
+        $definition = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+        if ($item -is [string] -and $item -eq 'Auto') { $definition.Width = [GliderUI.Avalonia.Controls.GridLength]::Auto }
+        elseif ($item -is [string] -and $item -eq 'Star') { $definition.Width = [GliderUI.Avalonia.Controls.GridLength]::new(1, 'Star') }
+        else { $definition.Width = [GliderUI.Avalonia.Controls.GridLength]::new([double]$item) }
         $grid.ColumnDefinitions.Add($definition)
     }
     return $grid
@@ -149,18 +149,18 @@ function New-ADTUiGridLayout {
 
 function Add-ADTUiGridRow {
     param($Grid, [string]$Height = 'Auto')
-    $row = [RowDefinition]::new()
-    if ($Height -eq 'Star') { $row.Height = [GridLength]::new(1, 'Star') }
-    else { $row.Height = [GridLength]::Auto }
+    $row = [GliderUI.Avalonia.Controls.RowDefinition]::new()
+    if ($Height -eq 'Star') { $row.Height = [GliderUI.Avalonia.Controls.GridLength]::new(1, 'Star') }
+    else { $row.Height = [GliderUI.Avalonia.Controls.GridLength]::Auto }
     $Grid.RowDefinitions.Add($row)
     return ($Grid.RowDefinitions.Count - 1)
 }
 
 function Add-ADTUiCell {
     param($Grid, $Child, [int]$Row, [int]$Column, [int]$ColumnSpan = 1)
-    [Grid]::SetRow($Child, $Row)
-    [Grid]::SetColumn($Child, $Column)
-    if ($ColumnSpan -gt 1) { [Grid]::SetColumnSpan($Child, $ColumnSpan) }
+    [GliderUI.Avalonia.Controls.Grid]::SetRow($Child, $Row)
+    [GliderUI.Avalonia.Controls.Grid]::SetColumn($Child, $Column)
+    if ($ColumnSpan -gt 1) { [GliderUI.Avalonia.Controls.Grid]::SetColumnSpan($Child, $ColumnSpan) }
     $Grid.Children.Add($Child) | Out-Null
 }
 
@@ -169,13 +169,13 @@ function New-ADTUiMenu {
     # la barre d actions prend alors le relais.
     param([hashtable[]]$Item)
     try {
-        $menu = [ContextMenu]::new()
+        $menu = [GliderUI.Avalonia.Controls.ContextMenu]::new()
         foreach ($definition in $Item) {
             if ([string]$definition['Header'] -eq '-') {
-                try { $menu.Items.Add([Separator]::new()) | Out-Null } catch { Write-Verbose 'Separateur de menu indisponible.' }
+                try { $menu.Items.Add([GliderUI.Avalonia.Controls.Separator]::new()) | Out-Null } catch { Write-Verbose 'Separateur de menu indisponible.' }
                 continue
             }
-            $entry = [MenuItem]::new()
+            $entry = [GliderUI.Avalonia.Controls.MenuItem]::new()
             $entry.Header = [string]$definition['Header']
             $action = $definition['Action']
             if ($action) { $null = Add-ADTUiEvent -Target $entry -Name 'Click' -Handler $action }
@@ -214,9 +214,9 @@ function New-ADTUiObjectGrid {
     }
     [void]$xaml.AppendLine('  </DataGrid.Columns>')
     [void]$xaml.AppendLine('</DataGrid>')
-    $grid = [AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
+    $grid = [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
     foreach ($gridColumn in $grid.Columns) {
-        if ($gridColumn.SortMemberPath) { $gridColumn.CustomSortComparer = [DataSourcePropertyComparer]::new($gridColumn.SortMemberPath) }
+        if ($gridColumn.SortMemberPath) { $gridColumn.CustomSortComparer = [GliderUI.DataSourcePropertyComparer]::new($gridColumn.SortMemberPath) }
     }
     if ($Height -gt 0) { $grid.Height = $Height }
     return $grid

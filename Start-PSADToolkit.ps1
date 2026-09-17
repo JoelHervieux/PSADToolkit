@@ -5,6 +5,17 @@ using namespace GliderUI.Avalonia.Controls
 using namespace GliderUI.Avalonia.Markup.Xaml
 using namespace GliderUI.Avalonia.Platform.Storage
 
+# NE PAS raccourcir les noms de types en s appuyant sur ces directives.
+#
+# Les types GliderUI sont ecrits en toutes lettres - [GliderUI.Avalonia.Controls.Window]
+# et non [Window] - dans ce fichier comme dans UI\. C est verbeux, et c est
+# volontaire : sur Windows Server 2016 avec GliderUI 0.4.1, la resolution par nom
+# court via using namespace echoue alors que le nom complet se resout, ce qui
+# arretait l interface sur "Impossible de trouver le type
+# [AvaloniaRuntimeXamlLoader]" juste apres la verification de demarrage. Les
+# directives ci-dessus sont conservees comme filet, sans etre utilisees.
+# Tests\ConsoleInterface.Tests.ps1 refuse tout retour au nom court.
+
 <#
 .SYNOPSIS
     Interface graphique francaise de PSADToolkit, batie sur GliderUI (Avalonia).
@@ -41,7 +52,7 @@ Import-Module GliderUI -ErrorAction Stop
 # le serveur. Si le module est installe mais que le serveur ne l est pas, ou si la
 # version installee est plus ancienne que celle attendue, les types manquent et la
 # premiere utilisation echoue sur un brutal "Impossible de trouver le type
-# [AvaloniaRuntimeXamlLoader]", sans dire quoi faire. On les verifie donc tout de
+# [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]", sans dire quoi faire. On les verifie donc tout de
 # suite, par leur nom complet, ce qui ne depend pas des directives using namespace.
 $requiredTypes = @(
     'GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader',
@@ -199,11 +210,11 @@ function New-ADTUiDataGrid {
     }
     [void]$xaml.AppendLine('  </DataGrid.Columns>')
     [void]$xaml.AppendLine('</DataGrid>')
-    $grid = [AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
+    $grid = [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
     # Ne pas nommer cette variable $column : les noms de variables sont insensibles a
     # la casse, elle designerait le parametre $Column et sa contrainte [hashtable[]].
     foreach ($gridColumn in $grid.Columns) {
-        if ($gridColumn.SortMemberPath) { $gridColumn.CustomSortComparer = [DataSourcePropertyComparer]::new($gridColumn.SortMemberPath) }
+        if ($gridColumn.SortMemberPath) { $gridColumn.CustomSortComparer = [GliderUI.DataSourcePropertyComparer]::new($gridColumn.SortMemberPath) }
     }
     return $grid
 }
@@ -224,7 +235,7 @@ function New-ADTUiDataSourceList {
     # transporte ainsi le DN et la classe de chaque ligne, dont les actions ont
     # besoin, sans les afficher.
     param([hashtable[]]$Column, $Row, [string[]]$Extra)
-    $items = [GliderUI.System.Collections.ObjectModel.ObservableCollection[DataSource]]::new()
+    $items = [GliderUI.System.Collections.ObjectModel.ObservableCollection[GliderUI.DataSource]]::new()
     foreach ($item in $Row) {
         $values = @{}
         foreach ($definition in $Column) {
@@ -236,7 +247,7 @@ function New-ADTUiDataSourceList {
             if (-not $item.PSObject.Properties[$path]) { continue }
             $values[$path] = Format-ADTUiCellValue $item.$path
         }
-        $items.Add([DataSource]$values)
+        $items.Add([GliderUI.DataSource]$values)
     }
     # Virgule unaire : sans elle PowerShell deroule la collection et le DataGrid
     # recevrait des elements isoles au lieu de la source liee.
@@ -257,27 +268,27 @@ function Show-ADTUiDialog {
     )
     $state = @{ Accepted = $false }
 
-    $text = [TextBlock]::new()
+    $text = [GliderUI.Avalonia.Controls.TextBlock]::new()
     $text.Text = $Message
     $text.TextWrapping = 'Wrap'
 
-    $scroll = [ScrollViewer]::new()
+    $scroll = [GliderUI.Avalonia.Controls.ScrollViewer]::new()
     $scroll.Content = $text
     $scroll.MaxHeight = 260
 
-    $buttons = [StackPanel]::new()
+    $buttons = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $buttons.Orientation = 'Horizontal'
     $buttons.Spacing = 12
     $buttons.HorizontalAlignment = 'Right'
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = $Title
     $dialog.Width = 640
     $dialog.Height = 320
     $dialog.WindowStartupLocation = 'CenterOwner'
 
     if ($CancelText) {
-        $cancel = [Button]::new()
+        $cancel = [GliderUI.Avalonia.Controls.Button]::new()
         $cancel.Content = $CancelText
         $cancel.Width = 150
         $cancel.HorizontalContentAlignment = 'Center'
@@ -285,7 +296,7 @@ function Show-ADTUiDialog {
         $buttons.Children.Add($cancel)
     }
 
-    $accept = [Button]::new()
+    $accept = [GliderUI.Avalonia.Controls.Button]::new()
     $accept.Content = $AcceptText
     $accept.Width = 150
     $accept.HorizontalContentAlignment = 'Center'
@@ -293,8 +304,8 @@ function Show-ADTUiDialog {
     $accept.AddClick({ $state.Accepted = $true; $dialog.Close() }.GetNewClosure())
     $buttons.Children.Add($accept)
 
-    $panel = [StackPanel]::new()
-    $panel.Margin = [Thickness]::new(20)
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
+    $panel.Margin = [GliderUI.Avalonia.Thickness]::new(20)
     $panel.Spacing = 18
     $panel.Children.Add($scroll)
     $panel.Children.Add($buttons)
@@ -354,14 +365,14 @@ function Select-ADTUiOrganizationalUnit {
     $organizationalUnits = @(Get-ADTUiOrganizationalUnit -SearchBase $domainDN @scope |
         Sort-Object -Property @{ Expression = { Get-ADTUiDNDepth $_.DN } }, Name)
 
-    $rootItem = [TreeViewItem]::new()
+    $rootItem = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
     $rootItem.Header = $domainDN
     $rootItem.Tag = $domainDN
     $rootItem.IsExpanded = $true
 
     $index = @{ $domainDN = $rootItem }
     foreach ($organizationalUnit in $organizationalUnits) {
-        $item = [TreeViewItem]::new()
+        $item = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
         $item.Header = $organizationalUnit.Name
         $item.Tag = $organizationalUnit.DN
         $parent = $rootItem
@@ -371,11 +382,11 @@ function Select-ADTUiOrganizationalUnit {
         $index[$organizationalUnit.DN] = $item
     }
 
-    $tree = [TreeView]::new()
+    $tree = [GliderUI.Avalonia.Controls.TreeView]::new()
     $tree.Height = 420
     $tree.Items.Add($rootItem) | Out-Null
 
-    $dnBox = [TextBox]::new()
+    $dnBox = [GliderUI.Avalonia.Controls.TextBox]::new()
     $dnBox.IsReadOnly = $true
     $dnBox.Text = $domainDN
 
@@ -385,38 +396,38 @@ function Select-ADTUiOrganizationalUnit {
         }.GetNewClosure())
 
     $state = @{ DN = $null }
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Selectionner une unite d organisation'
     $dialog.Width = 760
     $dialog.Height = 620
     $dialog.WindowStartupLocation = 'CenterOwner'
 
-    $cancel = [Button]::new()
+    $cancel = [GliderUI.Avalonia.Controls.Button]::new()
     $cancel.Content = 'Annuler'
     $cancel.Width = 150
     $cancel.HorizontalContentAlignment = 'Center'
     $cancel.AddClick({ $dialog.Close() }.GetNewClosure())
 
-    $accept = [Button]::new()
+    $accept = [GliderUI.Avalonia.Controls.Button]::new()
     $accept.Content = 'Selectionner'
     $accept.Width = 150
     $accept.HorizontalContentAlignment = 'Center'
     $accept.Classes.Add('accent')
     $accept.AddClick({ $state.DN = $dnBox.Text; $dialog.Close() }.GetNewClosure())
 
-    $buttons = [StackPanel]::new()
+    $buttons = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $buttons.Orientation = 'Horizontal'
     $buttons.Spacing = 12
     $buttons.HorizontalAlignment = 'Right'
     $buttons.Children.Add($cancel)
     $buttons.Children.Add($accept)
 
-    $count = [TextBlock]::new()
+    $count = [GliderUI.Avalonia.Controls.TextBlock]::new()
     $count.Text = ('{0} unite(s) d organisation lue(s) dans {1}.' -f $organizationalUnits.Count, $domainDN)
     $count.TextWrapping = 'Wrap'
 
-    $panel = [StackPanel]::new()
-    $panel.Margin = [Thickness]::new(18)
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
+    $panel.Margin = [GliderUI.Avalonia.Thickness]::new(18)
     $panel.Spacing = 12
     $panel.Children.Add($count)
     $panel.Children.Add($tree)
@@ -466,38 +477,38 @@ function Show-ADTUiImportPreview {
     $grid.Height = 420
 
     $state = @{ Accepted = $false }
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Apercu avant import'
     $dialog.Width = 1080
     $dialog.Height = 640
     $dialog.WindowStartupLocation = 'CenterOwner'
 
-    $cancel = [Button]::new()
+    $cancel = [GliderUI.Avalonia.Controls.Button]::new()
     $cancel.Content = 'Annuler'
     $cancel.Width = 150
     $cancel.HorizontalContentAlignment = 'Center'
     $cancel.AddClick({ $dialog.Close() }.GetNewClosure())
 
-    $accept = [Button]::new()
+    $accept = [GliderUI.Avalonia.Controls.Button]::new()
     $accept.Content = 'Continuer'
     $accept.Width = 150
     $accept.HorizontalContentAlignment = 'Center'
     $accept.Classes.Add('accent')
     $accept.AddClick({ $state.Accepted = $true; $dialog.Close() }.GetNewClosure())
 
-    $buttons = [StackPanel]::new()
+    $buttons = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $buttons.Orientation = 'Horizontal'
     $buttons.Spacing = 12
     $buttons.HorizontalAlignment = 'Right'
     $buttons.Children.Add($cancel)
     $buttons.Children.Add($accept)
 
-    $header = [TextBlock]::new()
+    $header = [GliderUI.Avalonia.Controls.TextBlock]::new()
     $header.Text = ('Apercu de {0} utilisateur(s). Verifier les OU et les groupes avant de continuer.' -f $rows.Count)
     $header.TextWrapping = 'Wrap'
 
-    $panel = [StackPanel]::new()
-    $panel.Margin = [Thickness]::new(18)
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
+    $panel.Margin = [GliderUI.Avalonia.Thickness]::new(18)
     $panel.Spacing = 12
     $panel.Children.Add($header)
     $panel.Children.Add($grid)
@@ -605,14 +616,14 @@ function Invoke-ADTUiBrowse {
             return
         }
         if ($Kind -eq 'folder') {
-            $options = [FolderPickerOpenOptions]::new()
+            $options = [GliderUI.Avalonia.Platform.Storage.FolderPickerOpenOptions]::new()
             $options.Title = 'Selectionner un dossier'
             $path = Get-ADTUiStoragePath ($window.StorageProvider.OpenFolderPickerAsync($options).WaitForCompleted())
             if ($path) { $Control.Text = $path }
             return
         }
         if ($Kind -eq 'open') {
-            $options = [FilePickerOpenOptions]::new()
+            $options = [GliderUI.Avalonia.Platform.Storage.FilePickerOpenOptions]::new()
             $options.Title = 'Selectionner un fichier CSV'
             $path = Get-ADTUiStoragePath ($window.StorageProvider.OpenFilePickerAsync($options).WaitForCompleted())
             if (-not $path) { return }
@@ -625,7 +636,7 @@ function Invoke-ADTUiBrowse {
             }
             return
         }
-        $options = [FilePickerSaveOptions]::new()
+        $options = [GliderUI.Avalonia.Platform.Storage.FilePickerSaveOptions]::new()
         if ($Kind -eq 'savehtml') {
             $options.Title = 'Enregistrer le rapport HTML'
             $options.DefaultExtension = 'html'
@@ -646,52 +657,52 @@ function Invoke-ADTUiBrowse {
 
 function New-ADTUiField {
     param([string]$Key, [string]$Label, [string]$Kind, [string]$Command, [hashtable]$Fields)
-    $panel = [StackPanel]::new()
+    $panel = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $panel.Spacing = 4
 
     if ($Kind -eq 'check') {
-        $control = [CheckBox]::new()
+        $control = [GliderUI.Avalonia.Controls.CheckBox]::new()
         $control.Content = $Label
-        $panel.Margin = [Thickness]::new(0, 18, 0, 0)
+        $panel.Margin = [GliderUI.Avalonia.Thickness]::new(0, 18, 0, 0)
         $panel.Children.Add($control)
     } else {
-        $caption = [TextBlock]::new()
+        $caption = [GliderUI.Avalonia.Controls.TextBlock]::new()
         $caption.Text = $Label
         $panel.Children.Add($caption)
 
         if ($Kind -eq 'number') {
-            $control = [NumericUpDown]::new()
+            $control = [GliderUI.Avalonia.Controls.NumericUpDown]::new()
             $control.Minimum = 1
             $control.Maximum = 3650
             $control.Value = 90
             $panel.Children.Add($control)
         } elseif ($Kind -eq 'delimiter') {
-            $control = [ComboBox]::new()
+            $control = [GliderUI.Avalonia.Controls.ComboBox]::new()
             $control.Items.Add(';') | Out-Null
             $control.Items.Add(',') | Out-Null
             $control.SelectedIndex = 0
             $control.HorizontalAlignment = 'Stretch'
             $panel.Children.Add($control)
         } else {
-            $control = [TextBox]::new()
+            $control = [GliderUI.Avalonia.Controls.TextBox]::new()
             if ($Key -eq 'Reason') { $control.Text = 'Depart de l employe' }
             if (@('ou', 'open', 'savecsv', 'savehtml', 'folder') -contains $Kind) {
-                $browse = [Button]::new()
+                $browse = [GliderUI.Avalonia.Controls.Button]::new()
                 $browse.Content = '...'
                 $browse.Width = 44
                 $browse.HorizontalContentAlignment = 'Center'
                 $browse.AddClick({ Invoke-ADTUiBrowse -Kind $Kind -Command $Command -Control $control -Fields $Fields }.GetNewClosure())
 
-                $line = [Grid]::new()
+                $line = [GliderUI.Avalonia.Controls.Grid]::new()
                 $line.ColumnSpacing = 6
-                $textColumn = [ColumnDefinition]::new()
-                $textColumn.Width = [GridLength]::new(1, 'Star')
-                $buttonColumn = [ColumnDefinition]::new()
-                $buttonColumn.Width = [GridLength]::Auto
+                $textColumn = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+                $textColumn.Width = [GliderUI.Avalonia.Controls.GridLength]::new(1, 'Star')
+                $buttonColumn = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+                $buttonColumn.Width = [GliderUI.Avalonia.Controls.GridLength]::Auto
                 $line.ColumnDefinitions.Add($textColumn)
                 $line.ColumnDefinitions.Add($buttonColumn)
-                [Grid]::SetColumn($control, 0)
-                [Grid]::SetColumn($browse, 1)
+                [GliderUI.Avalonia.Controls.Grid]::SetColumn($control, 0)
+                [GliderUI.Avalonia.Controls.Grid]::SetColumn($browse, 1)
                 $line.Children.Add($control)
                 $line.Children.Add($browse)
                 $panel.Children.Add($line)
@@ -827,7 +838,7 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.1.0-test3 | Administration Active Directory"
+        Title="PSADToolkit 3.1.0-test4 | Administration Active Directory"
         Width="1360" Height="1000">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 
@@ -893,7 +904,7 @@ $mainXaml = @'
 </Window>
 '@
 
-$window = [AvaloniaRuntimeXamlLoader]::Parse($mainXaml, $null)
+$window = [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]::Parse($mainXaml, $null)
 $connectionPanel = $window.FindControl('connection_panel')
 $serverBox = $window.FindControl('server_box')
 $otherAccount = $window.FindControl('other_account')
@@ -915,7 +926,7 @@ $otherAccount.AddIsCheckedChanged({
         if (-not $enabled) { $passwordBox.Text = '' }
     })
 
-$testButton.AddClick([EventCallback]@{
+$testButton.AddClick([GliderUI.EventCallback]@{
         DisabledControlsWhileProcessing = @($testButton, $tabs)
         ScriptBlock                     = {
             try { Invoke-ADTUiCommand -Command 'Test-ADTPrerequisite' -Parameters (Get-ADTUiConnection) }
@@ -927,7 +938,7 @@ $showPasswords.AddIsCheckedChanged({ Update-ADTUiResultGrid })
 
 $exportButton.AddClick({
         try {
-            $options = [FilePickerSaveOptions]::new()
+            $options = [GliderUI.Avalonia.Platform.Storage.FilePickerSaveOptions]::new()
             $options.Title = 'Exporter les resultats'
             $options.DefaultExtension = 'csv'
             $options.SuggestedFileName = 'psadtoolkit-resultats.csv'
@@ -946,7 +957,7 @@ $exportButton.AddClick({
 
 # La console d administration est le premier onglet : c est par elle qu on navigue
 # dans le domaine. Les onglets historiques restent inchanges derriere.
-$consoleTab = [TabItem]::new()
+$consoleTab = [GliderUI.Avalonia.Controls.TabItem]::new()
 $consoleTab.Header = 'Console AD'
 $consoleTab.Content = New-ADTUiConsoleTab -Busy @($tabs, $connectionPanel)
 $tabs.Items.Add($consoleTab) | Out-Null
@@ -959,51 +970,51 @@ $script:TabIndex = @{}
 foreach ($spec in $specs) {
     $fields = @{}
 
-    $content = [Grid]::new()
-    $content.Margin = [Thickness]::new(16)
+    $content = [GliderUI.Avalonia.Controls.Grid]::new()
+    $content.Margin = [GliderUI.Avalonia.Thickness]::new(16)
     $content.ColumnSpacing = 24
     $content.RowSpacing = 12
     foreach ($index in 0, 1) {
-        $column = [ColumnDefinition]::new()
-        $column.Width = [GridLength]::new(1, 'Star')
+        $column = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+        $column.Width = [GliderUI.Avalonia.Controls.GridLength]::new(1, 'Star')
         $content.ColumnDefinitions.Add($column)
     }
     $rowCount = [int][Math]::Ceiling(@($spec.Fields).Count / 2) + 1
     for ($index = 0; $index -lt $rowCount; $index++) {
-        $row = [RowDefinition]::new()
-        $row.Height = [GridLength]::Auto
+        $row = [GliderUI.Avalonia.Controls.RowDefinition]::new()
+        $row.Height = [GliderUI.Avalonia.Controls.GridLength]::Auto
         $content.RowDefinitions.Add($row)
     }
 
     $position = 0
     foreach ($field in $spec.Fields) {
         $cell = New-ADTUiField -Key ([string]$field[0]) -Label ([string]$field[1]) -Kind ([string]$field[2]) -Command ([string]$spec.Command) -Fields $fields
-        [Grid]::SetRow($cell, [int][Math]::Floor($position / 2))
-        [Grid]::SetColumn($cell, $position % 2)
+        [GliderUI.Avalonia.Controls.Grid]::SetRow($cell, [int][Math]::Floor($position / 2))
+        [GliderUI.Avalonia.Controls.Grid]::SetColumn($cell, $position % 2)
         $content.Children.Add($cell)
         $position++
     }
 
-    $simulate = [CheckBox]::new()
+    $simulate = [GliderUI.Avalonia.Controls.CheckBox]::new()
     $simulate.Content = 'Simulation : verifier sans modifier Active Directory'
     $simulate.IsChecked = $true
     $simulate.VerticalAlignment = 'Center'
     $simulate.IsVisible = [bool]$spec.Write
 
-    $note = [TextBlock]::new()
+    $note = [GliderUI.Avalonia.Controls.TextBlock]::new()
     $note.Text = 'Lecture du domaine. Le rapport HTML et les exports creent des fichiers locaux.'
     $note.VerticalAlignment = 'Center'
     $note.TextWrapping = 'Wrap'
     $note.IsVisible = -not [bool]$spec.Write
 
-    $run = [Button]::new()
+    $run = [GliderUI.Avalonia.Controls.Button]::new()
     $run.Content = 'Executer'
     if ([string]$spec.Command -eq 'Import-ADTUserFromCsv') { $run.Content = 'Apercu / Importer' }
     $run.Width = 200
     $run.HorizontalAlignment = 'Right'
     $run.HorizontalContentAlignment = 'Center'
     $run.Classes.Add('accent')
-    $run.AddClick([EventCallback]@{
+    $run.AddClick([GliderUI.EventCallback]@{
             # Le traitement se deroule dans le runspace principal : la fenetre reste
             # reactive, mais l onglet et la connexion sont neutralises pour interdire
             # une seconde operation simultanee.
@@ -1011,32 +1022,32 @@ foreach ($spec in $specs) {
             ScriptBlock                     = { Invoke-ADTUiExecute -Spec $spec -Fields $fields -Simulate $simulate }.GetNewClosure()
         })
 
-    $footerLeft = [StackPanel]::new()
+    $footerLeft = [GliderUI.Avalonia.Controls.StackPanel]::new()
     $footerLeft.Orientation = 'Horizontal'
     $footerLeft.Spacing = 8
     $footerLeft.VerticalAlignment = 'Center'
     $footerLeft.Children.Add($simulate)
     $footerLeft.Children.Add($note)
 
-    $footer = [Grid]::new()
-    $footer.Margin = [Thickness]::new(0, 12, 0, 0)
+    $footer = [GliderUI.Avalonia.Controls.Grid]::new()
+    $footer.Margin = [GliderUI.Avalonia.Thickness]::new(0, 12, 0, 0)
     $footer.ColumnSpacing = 16
-    $leftColumn = [ColumnDefinition]::new()
-    $leftColumn.Width = [GridLength]::new(1, 'Star')
-    $rightColumn = [ColumnDefinition]::new()
-    $rightColumn.Width = [GridLength]::Auto
+    $leftColumn = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+    $leftColumn.Width = [GliderUI.Avalonia.Controls.GridLength]::new(1, 'Star')
+    $rightColumn = [GliderUI.Avalonia.Controls.ColumnDefinition]::new()
+    $rightColumn.Width = [GliderUI.Avalonia.Controls.GridLength]::Auto
     $footer.ColumnDefinitions.Add($leftColumn)
     $footer.ColumnDefinitions.Add($rightColumn)
-    [Grid]::SetColumn($footerLeft, 0)
-    [Grid]::SetColumn($run, 1)
+    [GliderUI.Avalonia.Controls.Grid]::SetColumn($footerLeft, 0)
+    [GliderUI.Avalonia.Controls.Grid]::SetColumn($run, 1)
     $footer.Children.Add($footerLeft)
     $footer.Children.Add($run)
-    [Grid]::SetRow($footer, $rowCount - 1)
-    [Grid]::SetColumn($footer, 0)
-    [Grid]::SetColumnSpan($footer, 2)
+    [GliderUI.Avalonia.Controls.Grid]::SetRow($footer, $rowCount - 1)
+    [GliderUI.Avalonia.Controls.Grid]::SetColumn($footer, 0)
+    [GliderUI.Avalonia.Controls.Grid]::SetColumnSpan($footer, 2)
     $content.Children.Add($footer)
 
-    $tab = [TabItem]::new()
+    $tab = [GliderUI.Avalonia.Controls.TabItem]::new()
     $tab.Header = [string]$spec.Title
     $tab.Content = $content
     $script:TabFields[[string]$spec.Command] = $fields

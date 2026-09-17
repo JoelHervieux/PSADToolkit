@@ -50,7 +50,7 @@ function Show-ADTUiLogonHoursEditor {
     $state = @{ Mask = $null; Bulk = $false }
     $cells = @{}
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = $Title
     $dialog.Width = 1080
     $dialog.Height = 620
@@ -92,7 +92,7 @@ function Show-ADTUiLogonHoursEditor {
             } finally { $state['Bulk'] = $false }
             & $refresh
         }.GetNewClosure()
-        try { $header.Padding = [Thickness]::new(0) } catch { Write-Verbose 'Marge de bouton refusee.' }
+        try { $header.Padding = [GliderUI.Avalonia.Thickness]::new(0) } catch { Write-Verbose 'Marge de bouton refusee.' }
         Add-ADTUiCell -Grid $grid -Child $header -Row 0 -Column ($hour + 1)
     }
 
@@ -116,7 +116,7 @@ function Show-ADTUiLogonHoursEditor {
 
         for ($hour = 0; $hour -lt 24; $hour++) {
             $slot = ($day * 24) + $hour
-            $box = [CheckBox]::new()
+            $box = [GliderUI.Avalonia.Controls.CheckBox]::new()
             $box.IsChecked = ($Mask[$slot] -eq '1')
             $box.HorizontalAlignment = 'Center'
             try { $box.ToolTip = ((Format-ADTDayName -DayOfWeek $day) + ' ' + (Format-ADTHourLabel -Hour $hour) + ' - ' + (Format-ADTHourLabel -Hour ($hour + 1))) }
@@ -188,7 +188,7 @@ function Show-ADTUiLogonHoursEditor {
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
 
-    $scroll = [ScrollViewer]::new()
+    $scroll = [GliderUI.Avalonia.Controls.ScrollViewer]::new()
     $scroll.Content = $panel
 
     & $refresh

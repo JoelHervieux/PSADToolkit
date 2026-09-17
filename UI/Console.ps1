@@ -101,7 +101,7 @@ function Update-ADTUiConsoleTree {
             -Property @('name', 'distinguishedName', 'objectClass') @scope |
         Sort-Object -Property @{ Expression = { Get-ADTUiDNDepth ([string]$_.DistinguishedName) } }, @{ Expression = { [string]$_.Name } })
 
-    $root = [TreeViewItem]::new()
+    $root = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
     $root.Header = $script:Console.DomainName
     $root.Tag = $domainDN
     $root.IsExpanded = $true
@@ -109,7 +109,7 @@ function Update-ADTUiConsoleTree {
     $index = @{ $domainDN = $root }
     foreach ($container in $containers) {
         $dn = [string]$container.DistinguishedName
-        $node = [TreeViewItem]::new()
+        $node = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
         $node.Header = [string]$container.Name
         $node.Tag = $dn
         $parent = $root
@@ -436,7 +436,7 @@ function New-ADTUiConsoleDocument {
         Show-ADTUiError 'Aucun mot de passe genere dans les resultats courants. Le document ne peut etre produit que juste apres une creation de compte ou une reinitialisation.'
         return
     }
-    $options = [FolderPickerOpenOptions]::new()
+    $options = [GliderUI.Avalonia.Platform.Storage.FolderPickerOpenOptions]::new()
     $options.Title = 'Dossier des documents de remise'
     $folder = Get-ADTUiStoragePath ($window.StorageProvider.OpenFolderPickerAsync($options).WaitForCompleted())
     if (-not $folder) { return }
@@ -623,7 +623,7 @@ function New-ADTUiConsoleTab {
 #>
     param($Busy)
 
-    $tree = [TreeView]::new()
+    $tree = [GliderUI.Avalonia.Controls.TreeView]::new()
     $tree.Height = 430
     $script:Console.Tree = $tree
 
@@ -636,16 +636,16 @@ function New-ADTUiConsoleTab {
     $simulate = New-ADTUiCheck -Label 'Simulation : verifier sans modifier Active Directory' -Checked $true
     $script:Console.Simulate = $simulate
 
-    $searchBox = [TextBox]::new()
+    $searchBox = [GliderUI.Avalonia.Controls.TextBox]::new()
     $searchBox.Watermark = 'Nom, identifiant, UPN, courriel...'
     $script:Console.SearchBox = $searchBox
 
-    $searchScope = [ComboBox]::new()
+    $searchScope = [GliderUI.Avalonia.Controls.ComboBox]::new()
     foreach ($item in @('Unite selectionnee', 'Tout le domaine')) { $searchScope.Items.Add($item) | Out-Null }
     $searchScope.SelectedIndex = 1
     $script:Console.SearchScope = $searchScope
 
-    $typeFilter = [ComboBox]::new()
+    $typeFilter = [GliderUI.Avalonia.Controls.ComboBox]::new()
     foreach ($item in @('Tous les objets', 'Utilisateurs', 'Groupes', 'Ordinateurs', 'Unites d organisation')) {
         $typeFilter.Items.Add($item) | Out-Null
     }

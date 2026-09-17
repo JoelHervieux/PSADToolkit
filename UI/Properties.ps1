@@ -16,9 +16,9 @@ using namespace GliderUI.Avalonia.Controls
 
 function New-ADTUiPropertySection {
     param([string]$Header, [object[]]$Child)
-    $tab = [TabItem]::new()
+    $tab = [GliderUI.Avalonia.Controls.TabItem]::new()
     $tab.Header = $Header
-    $scroll = [ScrollViewer]::new()
+    $scroll = [GliderUI.Avalonia.Controls.ScrollViewer]::new()
     $scroll.Content = New-ADTUiStack -Margin 16 -Spacing 12 -Child $Child
     $tab.Content = $scroll
     return $tab
@@ -42,7 +42,7 @@ function Show-ADTUiProperties {
     # La fenetre est creee avant les boutons : plusieurs d entre eux la ferment,
     # et .GetNewClosure() fige la valeur des variables au moment ou le bloc est
     # cree. Declaree plus bas, elle vaudrait $null dans ces closures.
-    $propertiesWindow = [Window]::new()
+    $propertiesWindow = [GliderUI.Avalonia.Controls.Window]::new()
     $propertiesWindow.Title = 'Proprietes de ' + [string]$Object.Name
     $propertiesWindow.Width = 900
     $propertiesWindow.Height = 760
@@ -65,7 +65,7 @@ function Show-ADTUiProperties {
         return $check
     }.GetNewClosure()
 
-    $tabs = [TabControl]::new()
+    $tabs = [GliderUI.Avalonia.Controls.TabControl]::new()
 
     # --- General ---------------------------------------------------------------
     $general = @(

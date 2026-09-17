@@ -1,5 +1,39 @@
 ﻿# Changements
 
+## 3.1.0-test4 - 2026-09-17
+
+Correction du defaut qui empechait l interface de demarrer sur le poste d essai,
+un Windows Server 2016 avec PowerShell 7.6.6 et GliderUI 0.4.1.
+
+- Tous les types GliderUI sont ecrits en toutes lettres dans l interface :
+  `[GliderUI.Avalonia.Controls.Window]` et non `[Window]`. 129 litteraux dans
+  `Start-PSADToolkit.ps1` et les cinq fichiers de `UI\`.
+
+  Le diagnostic a demande plusieurs allers-retours. Une fois le serveur GliderUI
+  installe, le nom COMPLET se resolvait - verifie sur le poste, y compris sous
+  `-NoProfile` - alors que l interface echouait toujours sur le nom COURT
+  `[AvaloniaRuntimeXamlLoader]`. Comme les litteraux courts se trouvent tous apres
+  la verification de demarrage, laquelle ne signalait rien, la conclusion est que
+  `using namespace` ne couvre pas les types de GliderUI sur cette installation,
+  alors que la resolution par nom complet fonctionne.
+
+  Les directives `using namespace` sont conservees comme filet mais ne sont plus
+  utilisees. Un commentaire en tete du fichier explique pourquoi la forme verbeuse
+  est volontaire, et `Tests\ConsoleInterface.Tests.ps1` refuse desormais tout
+  retour au nom court : le controle a ete verifie en reintroduisant un `[CheckBox]`,
+  qui fait bien echouer la suite.
+
+- Le meme test releve les types dans l ARBRE SYNTAXIQUE au lieu du texte brut : un
+  nom de type cite dans un commentaire ou dans une chaine XAML n en est pas un, et
+  la recherche textuelle s y laissait prendre. Il verifie toujours, dans les deux
+  sens, que la verification de demarrage couvre exactement les types employes.
+
+- Hypothese ecartee en chemin, pour memoire : `using namespace` suivi d un
+  `Import-Module` tardif resout parfaitement le nom court dans un script. Le
+  probleme ne vient donc pas de l ordre des instructions mais de la maniere dont
+  l assembly de GliderUI est chargee.
+
+
 ## 3.1.0-test3 - 2026-09-17
 
 Suite du deblocage de l installation GliderUI sur un serveur isole. Le poste

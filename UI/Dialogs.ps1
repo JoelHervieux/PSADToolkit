@@ -50,7 +50,7 @@ function Show-ADTUiNewUser {
     $noChange = New-ADTUiCheck -Label 'Ne pas forcer le changement de mot de passe'
     $document = New-ADTUiCheck -Label 'Generer le document de remise des identifiants' -Checked $false
 
-    $length = [NumericUpDown]::new()
+    $length = [GliderUI.Avalonia.Controls.NumericUpDown]::new()
     $length.Minimum = 12
     $length.Maximum = 128
     $length.Value = 16
@@ -61,7 +61,7 @@ function Show-ADTUiNewUser {
         if ($selected) { $target.Box.Text = $selected }
     }.GetNewClosure()
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Nouvel utilisateur'
     $dialog.Width = 820
     $dialog.Height = 680
@@ -122,17 +122,17 @@ function Show-ADTUiNewGroup {
     $description = New-ADTUiTextField -Label 'Description'
     $target = New-ADTUiTextField -Label 'OU cible' -Value $Path -ReadOnly
 
-    $scope = [ComboBox]::new()
+    $scope = [GliderUI.Avalonia.Controls.ComboBox]::new()
     foreach ($item in @('Global', 'DomainLocal', 'Universal')) { $scope.Items.Add($item) | Out-Null }
     $scope.SelectedIndex = 0
     $scope.HorizontalAlignment = 'Stretch'
 
-    $category = [ComboBox]::new()
+    $category = [GliderUI.Avalonia.Controls.ComboBox]::new()
     foreach ($item in @('Security', 'Distribution')) { $category.Items.Add($item) | Out-Null }
     $category.SelectedIndex = 0
     $category.HorizontalAlignment = 'Stretch'
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Nouveau groupe'
     $dialog.Width = 720
     $dialog.Height = 520
@@ -177,7 +177,7 @@ function Show-ADTUiNewOrganizationalUnit {
     $target = New-ADTUiTextField -Label 'Conteneur parent' -Value $Path -ReadOnly
     $protect = New-ADTUiCheck -Label 'Proteger le conteneur contre une suppression accidentelle' -Checked $true
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Nouvelle unite d organisation'
     $dialog.Width = 720
     $dialog.Height = 440
@@ -213,7 +213,7 @@ function Show-ADTUiPasswordReset {
     $state = @{ Run = $false }
     $single = (@($Account).Count -eq 1)
 
-    $length = [NumericUpDown]::new()
+    $length = [GliderUI.Avalonia.Controls.NumericUpDown]::new()
     $length.Minimum = 12
     $length.Maximum = 128
     $length.Value = 16
@@ -236,7 +236,7 @@ function Show-ADTUiPasswordReset {
 
     $imposed = New-ADTUiTextField -Label 'Mot de passe impose (vide = genere pour chaque compte)'
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Reinitialiser le mot de passe'
     $dialog.Width = 780
     $dialog.Height = 640
@@ -294,7 +294,7 @@ function Show-ADTUiGroupMembership {
     $current = New-ADTUiTextField -Label 'Appartenances actuelles' -Height 140 -ReadOnly `
         -Value ((@($CurrentGroup) | Sort-Object) -join [Environment]::NewLine)
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Gerer les groupes'
     $dialog.Width = 760
     $dialog.Height = 560
@@ -397,7 +397,7 @@ function Show-ADTUiMemberSelection {
         & $refresh
     }.GetNewClosure()
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = $Title
     $dialog.Width = 1180
     $dialog.Height = 720
@@ -460,7 +460,7 @@ function Show-ADTUiGroupMemberManager {
 
     $newMember = New-ADTUiTextField -Label 'Comptes a ajouter (identifiants separes par ;)'
 
-    $dialog = [Window]::new()
+    $dialog = [GliderUI.Avalonia.Controls.Window]::new()
     $dialog.Title = 'Membres du groupe ' + $GroupName
     $dialog.Width = 1180
     $dialog.Height = 760
