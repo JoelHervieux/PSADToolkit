@@ -1,5 +1,10 @@
 ﻿# Changements
 
+## 3.0.0-test3 - 2026-09-17
+
+- Correction de `Impossible de convertir la valeur GliderUI.Avalonia.Controls.DataGridTextColumn ... en type System.Collections.Hashtable[]`. Dans `New-ADTUiDataGrid` et `New-ADTUiDataSourceList`, la boucle `foreach ($column ...)` reutilisait le nom du parametre `[hashtable[]]$Column` : les noms de variables PowerShell etant insensibles a la casse, la contrainte de type du parametre s appliquait a la variable de boucle. Aucune grille de resultats ne pouvait s afficher, ni l apercu avant import.
+- Ajout de `Tests\Test-ParameterShadowing.ps1` : le controle echoue si une boucle `foreach` reutilise le nom d un parametre type, dans tout le depot.
+
 ## 3.0.0-test2 - 2026-09-17
 
 - Correction du refus `Lancer avec Windows PowerShell (powershell.exe), pas PowerShell 7 (pwsh.exe)` : `Test-ADTPrerequisite` interdisait encore PowerShell 7, ce qui bloquait la connexion au domaine depuis la nouvelle interface. La verification porte desormais sur Windows et sur la disponibilite de `System.DirectoryServices`, quel que soit le moteur.

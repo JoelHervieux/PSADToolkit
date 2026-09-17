@@ -1,8 +1,8 @@
-﻿# PSADToolkit 3.0.0-test2
+﻿# PSADToolkit 3.0.0-test3
 
 Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.0.0-test2` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.0.0-test3` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
@@ -140,9 +140,12 @@ Voir `VALIDATION.md`. Les tests Pester nécessitent un poste de développement m
 Invoke-Pester -Path .\Tests -Output Detailed
 .\Tests\Test-Compatibility.ps1
 .\Tests\Test-VersionConsistency.ps1
+.\Tests\Test-ParameterShadowing.ps1
 ```
 
 `Test-VersionConsistency.ps1` échoue si un fichier annonce une version différente de celle du manifeste. Le lancer avant toute étiquette git, comme indiqué dans `VERSIONING.md`.
+
+`Test-ParameterShadowing.ps1` échoue si une boucle `foreach` réutilise le nom d'un paramètre typé. Les noms de variables PowerShell sont insensibles à la casse et la contrainte de type du paramètre vaut pour toute la fonction : la boucle se casse alors sur une conversion impossible, comme en 3.0.0-test2 où la grille de résultats ne pouvait plus s'afficher.
 
 Le pipeline GitHub Actions est configuré pour reconstruire et vérifier sous Windows PowerShell 5.1. Cette configuration ne signifie pas qu'une exécution GitHub Actions a été lancée lors de cette livraison.
 

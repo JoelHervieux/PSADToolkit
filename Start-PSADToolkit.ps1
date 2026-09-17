@@ -93,8 +93,10 @@ function New-ADTUiDataGrid {
     [void]$xaml.AppendLine('  </DataGrid.Columns>')
     [void]$xaml.AppendLine('</DataGrid>')
     $grid = [AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
-    foreach ($column in $grid.Columns) {
-        if ($column.SortMemberPath) { $column.CustomSortComparer = [DataSourcePropertyComparer]::new($column.SortMemberPath) }
+    # Ne pas nommer cette variable $column : les noms de variables sont insensibles a
+    # la casse, elle designerait le parametre $Column et sa contrainte [hashtable[]].
+    foreach ($gridColumn in $grid.Columns) {
+        if ($gridColumn.SortMemberPath) { $gridColumn.CustomSortComparer = [DataSourcePropertyComparer]::new($gridColumn.SortMemberPath) }
     }
     return $grid
 }
@@ -104,8 +106,8 @@ function New-ADTUiDataSourceList {
     $items = [GliderUI.System.Collections.ObjectModel.ObservableCollection[DataSource]]::new()
     foreach ($item in $Row) {
         $values = @{}
-        foreach ($column in $Column) {
-            $path = [string]$column['Path']
+        foreach ($definition in $Column) {
+            $path = [string]$definition['Path']
             $values[$path] = [string]$item.$path
         }
         $items.Add([DataSource]$values)
@@ -699,7 +701,7 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.0.0-test2 | Administration Active Directory"
+        Title="PSADToolkit 3.0.0-test3 | Administration Active Directory"
         Width="1200" Height="920">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 

@@ -1,6 +1,6 @@
 ﻿<#
-    PSADToolkit 3.0.0-test2 - version autonome
-    Generee le 2026-09-17 13:47 par Build.ps1 - NE PAS MODIFIER A LA MAIN.
+    PSADToolkit 3.0.0-test3 - version autonome
+    Generee le 2026-09-17 15:01 par Build.ps1 - NE PAS MODIFIER A LA MAIN.
 
     Utilisation :
         . .\PSADToolkit-Standalone.ps1     # sourcer le fichier
