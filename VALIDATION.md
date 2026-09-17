@@ -1,8 +1,8 @@
 ﻿# Validation
 
-> **État au 17 septembre 2026 : version du dépôt `3.1.0-test2`.** Aucune version de ce dépôt n'a passé la recette Windows. Ce qui est décrit ci-dessous a été **réellement exécuté**, sous Linux, avec PowerShell 7.4.6 et Pester 5.7.1 ; ce qui ne l'a pas été est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
+> **État au 17 septembre 2026 : version du dépôt `3.1.0-test4`.** Aucune version de ce dépôt n'a passé la recette Windows. Ce qui est décrit ci-dessous a été **réellement exécuté**, sous Linux, avec PowerShell 7.4.6 et Pester 5.7.1 ; ce qui ne l'a pas été est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
 
-## Ce qui a été exécuté pour 3.1.0-test1
+## Ce qui a été exécuté pour 3.1.0-test4
 
 Environnement : Linux, PowerShell 7.4.6, Pester 5.7.1. **PSScriptAnalyzer n'était pas installable dans cet environnement** ; `Tests\Test-Compatibility.ps1` n'a donc pas pu être lancé et doit l'être sur le poste de développement Windows.
 
@@ -10,14 +10,14 @@ Environnement : Linux, PowerShell 7.4.6, Pester 5.7.1. **PSScriptAnalyzer n'éta
 |---|---|
 | Analyse syntaxique native des 60 fichiers PowerShell du dépôt | Réussie, aucune erreur |
 | Import du module et export des 27 fonctions publiques | Réussi |
-| `Invoke-Pester -Path .\Tests` | **133 réussis, 0 échec** |
+| `Invoke-Pester -Path .\Tests` | **134 réussis, 0 échec** |
 | `Tests\Test-ParameterShadowing.ps1` | PASS, 58 fichiers analysés (le standalone est exclu) |
 | `Tests\Test-VersionConsistency.ps1` | PASS |
 | `Build.ps1` : génération et analyse syntaxique du standalone | Réussies, 41 fonctions, 5588 lignes |
 | Chargement du standalone et appel des nouvelles fonctions hors annuaire | Réussi |
 | Aide intégrée des 27 fonctions : synopsis et exemple | Présents pour toutes |
 
-Répartition des 133 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45, `Regression.Tests.ps1` 21, `ConsoleInterface.Tests.ps1` 13, `Interface.Tests.ps1` 5.
+Répartition des 134 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45, `Regression.Tests.ps1` 21, `ConsoleInterface.Tests.ps1` 14, `Interface.Tests.ps1` 5.
 
 ## Ce que ces tests couvrent
 
@@ -41,15 +41,31 @@ Répartition des 133 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45,
 
 ## Non vérifié dans cet environnement
 
-- **L'interface graphique n'a été exécutée sur aucune machine ici.** Ni GliderUI, ni Avalonia, ni Windows n'étaient disponibles. L'affichage réel de l'arborescence, de la grille des horaires, des menus contextuels, de la sélection multiple et des feuilles de propriétés reste entièrement à valider.
+- **L'interface graphique n'a été exécutée sur aucune machine ici.** Ni GliderUI, ni Avalonia, ni Windows n'étaient disponibles dans l'environnement de développement. Tout ce qui suit provient donc du poste de l'exploitant, pas d'une mesure reproductible.
 
-  Un premier lancement a eu lieu sur un poste Windows en 3.1.0-test1 : il s'est arrêté avant d'afficher quoi que ce soit, sur `Impossible de trouver le type [AvaloniaRuntimeXamlLoader]`. L'API employée étant conforme à la documentation de GliderUI, la cause est l'installation de GliderUI sur ce poste — serveur absent ou désynchronisé du module. La 3.1.0-test2 ajoute la vérification de démarrage et `Tests\Test-GliderUI.ps1` pour l'établir en une commande. **Cette hypothèse n'est pas encore confirmée** : elle le sera par la sortie du diagnostic.
+  Ce qui est établi : **en 3.1.0-test4, l'interface démarre**. Voir la section suivante.
+
+  Ce qui ne l'est pas : l'affichage et le comportement réels de l'arborescence, de la liste, de la grille des horaires, des menus contextuels, de la sélection multiple et des feuilles de propriétés. Aucune de ces vues n'a été exercée méthodiquement.
 - Les interactions dépendantes de la version de GliderUI installée : `ContextMenu`, `DoubleTapped`, `DataGrid.SelectedItems`. Elles sont branchées de façon tolérante et chaque action dispose d'un bouton équivalent, mais ce repli n'a pas été observé en conditions réelles.
 - Toute écriture LDAP réelle : `logonHours`, `accountExpires`, `lockoutTime`, `userAccountControl`, création de groupe et d'unité, renommage, suppression, et la protection contre la suppression accidentelle qui passe par le descripteur de sécurité.
 - La lecture d'une stratégie de mot de passe affinée (`msDS-ResultantPSO`) sur un domaine de niveau 2008 ou supérieur.
 - L'exécution sur Windows PowerShell 2.0 / .NET 2.0 sous Server 2008 SP2.
 - `Tests\Test-Compatibility.ps1` et PSScriptAnalyzer.
 - Le pipeline GitHub Actions.
+
+## Premier démarrage réel de l'interface
+
+Poste : **Windows Server 2016** (build 10.0.14393), **PowerShell 7.6.6**, **GliderUI 0.4.1**, sans accès Internet ni proxy.
+
+Deux défauts distincts ont empêché le démarrage, tous deux corrigés :
+
+1. **Serveur GliderUI absent.** `GliderUI.Server.win-x64` est un module séparé du module `GliderUI` ; il porte les classes Avalonia. `Install-GLIServer` échouait sur `Hôte inconnu (www.powershellgallery.com:443)`, la machine ne résolvant pas ce nom. Installé hors ligne à partir du `.nupkg` (voir `README.md`, *Installation hors ligne*, et `Tests\Install-GliderUIOffline.ps1`).
+
+2. **Résolution des types par nom court.** Serveur installé, le nom complet `GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader` se résolvait — vérifié sur le poste, y compris sous `-NoProfile` — mais l'interface échouait toujours sur le nom court `[AvaloniaRuntimeXamlLoader]`, après avoir passé sa vérification de démarrage. `using namespace` ne couvre donc pas les types de GliderUI sur cette installation. Les 129 littéraux de type de l'interface ont été réécrits en toutes lettres en 3.1.0-test4.
+
+   Cette cause n'a **pas pu être reproduite** en développement : c'est une déduction par élimination à partir des mesures faites sur le poste. La correction ne dépend cependant pas de sa justesse, puisqu'elle supprime l'usage du mécanisme défaillant. Une hypothèse a été explicitement écartée par l'expérience : `using namespace` suivi d'un `Import-Module` tardif résout correctement le nom court dans un script.
+
+À partir de la 3.1.0-test4, l'interface **s'ouvre** sur cette configuration. C'est tout ce qui est établi à ce jour : la recette ci-dessous reste entièrement à faire.
 
 ## Recette Windows à effectuer dans une OU de laboratoire
 
