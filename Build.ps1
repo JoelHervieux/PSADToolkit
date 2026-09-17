@@ -28,7 +28,16 @@ $ErrorActionPreference = 'Stop'
 
 $moduleRoot = $PSScriptRoot
 $manifest   = Import-PowerShellDataFile -Path (Join-Path $moduleRoot 'PSADToolkit.psd1')
-$version    = $manifest.ModuleVersion
+$version    = [string]$manifest.ModuleVersion
+
+# Version complete = numero + canal (VERSIONING.md). ModuleVersion reste numerique
+# pour Windows PowerShell 2.0 ; le canal vient de PrivateData.PSData.Prerelease.
+$prerelease = ''
+if ($manifest.ContainsKey('PrivateData') -and $manifest.PrivateData -is [hashtable] -and
+    $manifest.PrivateData.ContainsKey('PSData') -and $manifest.PrivateData.PSData -is [hashtable]) {
+    $prerelease = [string]$manifest.PrivateData.PSData['Prerelease']
+}
+if ($prerelease) { $version = '{0}-{1}' -f $version, $prerelease }
 
 $outputDir = Split-Path -Parent $OutputPath
 if ($outputDir -and -not (Test-Path $outputDir)) {
@@ -88,6 +97,12 @@ foreach ($section in $sections) {
 # Pas d Export-ModuleMember : ce fichier n est pas un module, il est source.
 
 $content = $builder.ToString()
+
+# Fins de ligne uniformes : le fichier est assemble a partir de sources dont les fins
+# de ligne varient selon la copie de travail et selon le systeme qui lance le build.
+# Sans cette normalisation, le meme code produit un fichier different d un poste a
+# l autre. Windows PowerShell 2.0 a 5.1 lit indifferemment LF et CRLF.
+$content = $content -replace "`r`n", "`n"
 
 # Encodage UTF-8 avec BOM : indispensable pour que PowerShell 2.0 et 5.1 lisent
 # correctement les accents dans les messages et l aide integree.

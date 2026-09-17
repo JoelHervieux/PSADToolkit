@@ -1,5 +1,7 @@
 ﻿# Validation de la livraison 2.1.1
 
+> État au 17 septembre 2026 : la version courante du dépôt est `2.1.4-test1`. Le rapport ci-dessous porte sur la livraison 2.1.1 ; les correctifs 2.1.2, 2.1.3 et 2.1.4 n'ont pas été revalidés et la recette Windows reste entièrement à faire. Ce fichier garde volontairement le numéro réellement validé : voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
+
 Validation réalisée le 14 septembre 2026 dans un environnement Linux, avec PowerShell 7.4.6, Pester 5.7.1 et PSScriptAnalyzer 1.24.0.
 
 | Vérification | Résultat |

@@ -1,6 +1,8 @@
-﻿# PSADToolkit 2.1.1
+﻿# PSADToolkit 2.1.4-test1
 
 Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. Code ciblant **Windows Server 2008 SP2 à Windows Server 2025** avec **Windows PowerShell 2.0 à 5.1**. Accès LDAP par ADSI / .NET Framework : **RSAT et AD Web Services ne sont plus nécessaires**.
+
+**Version `2.1.4-test1` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 ## Démarrage
 
@@ -125,7 +127,10 @@ Voir `VALIDATION.md`. Les tests Pester nécessitent un poste de développement m
 ```powershell
 Invoke-Pester -Path .\Tests -Output Detailed
 .\Tests\Test-Compatibility.ps1
+.\Tests\Test-VersionConsistency.ps1
 ```
+
+`Test-VersionConsistency.ps1` échoue si un fichier annonce une version différente de celle du manifeste. Le lancer avant toute étiquette git, comme indiqué dans `VERSIONING.md`.
 
 Le pipeline GitHub Actions est configuré pour reconstruire et vérifier sous Windows PowerShell 5.1. Cette configuration ne signifie pas qu'une exécution GitHub Actions a été lancée lors de cette livraison.
 
