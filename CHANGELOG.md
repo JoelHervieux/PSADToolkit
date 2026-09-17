@@ -1,5 +1,17 @@
 ﻿# Changements
 
+## 3.0.0-test1 - 2026-09-17
+
+- Interface Windows Forms remplacee par GliderUI (Avalonia). Les sept onglets, le selecteur d OU, l apercu d import, la grille de resultats et les exports sont conserves.
+- L interface exige desormais PowerShell 7.4 et le module GliderUI avec son serveur (`Install-GLIServer`). `Lancer.cmd` demarre `pwsh.exe` ; le mode STA n est plus necessaire.
+- Le runspace de travail et le minuteur de scrutation disparaissent : GliderUI affiche l interface dans un processus separe, les traitements longs s executent dans le runspace principal sans figer la fenetre.
+- L apercu d import reutilise `Get-ADTImportTargetOU` et `Get-ADTCsvRowGroups` du module au lieu d en redupliquer la logique.
+- Le selecteur d OU lit toutes les unites d organisation en une requete puis reconstruit l arbre a partir des DN : Avalonia n expose pas d evenement d expansion exploitable pour un chargement paresseux.
+- Le module reste compatible Windows PowerShell 2.0 en ligne de commande. Manifeste, `Private`, `Public` et standalone inchanges.
+- `Tests\Interface.Tests.ps1` remis d accord avec l interface : il verifiait encore 35 champs et un format de champ abandonne en 2.1.0. Ajout du controle des types de controles et des commandes exportees.
+- `Tests\Test-Compatibility.ps1` n analyse plus l interface avec les regles PowerShell 2.0.
+- Aucun changement du code d exploitation Active Directory.
+
 ## 2.1.4-test1 - 2026-09-17
 
 - Ajout de `VERSIONING.md` : format des numeros, canaux `test` / `rc` / stable, emplacements ou la version est inscrite et procedure de publication.

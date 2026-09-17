@@ -1,391 +1,915 @@
-﻿#requires -version 2.0
+﻿#requires -version 7.4
+using namespace GliderUI
+using namespace GliderUI.Avalonia
+using namespace GliderUI.Avalonia.Controls
+using namespace GliderUI.Avalonia.Markup.Xaml
+using namespace GliderUI.Avalonia.Platform.Storage
+
 <#
 .SYNOPSIS
-    Interface graphique francaise pour PSADToolkit. Lancer avec Lancer.cmd.
+    Interface graphique francaise de PSADToolkit, batie sur GliderUI (Avalonia).
+.DESCRIPTION
+    Lancer avec Lancer.cmd, ou directement : pwsh -File Start-PSADToolkit.ps1
+
+    Prerequis :
+      - PowerShell 7.4 ou superieur (pwsh.exe) ;
+      - le module GliderUI et son serveur : Install-PSResource -Name GliderUI puis Install-GLIServer ;
+      - Windows : le backend interroge Active Directory via System.DirectoryServices.
+
+    L interface reste reactive pendant les operations : GliderUI affiche l UI dans un
+    processus serveur separe, le script PowerShell n a donc pas de fil d execution UI a
+    menager. Les controles a neutraliser pendant un traitement sont declares dans
+    DisabledControlsWhileProcessing.
 #>
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
-$script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or $PSVersionTable.PSVersion.Major -gt 5) { throw 'Utiliser Windows PowerShell 2.0 a 5.1 (powershell.exe).' }
-if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') { throw 'Lancer via Lancer.cmd ou powershell.exe -STA -File Start-PSADToolkit.ps1.' }
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Data
-[Windows.Forms.Application]::EnableVisualStyles()
-$script:Worker=$null; $script:Handle=$null; $script:Runspace=$null; $script:Rows=@(); $script:Operation=''
+$script:Root = $PSScriptRoot
 
-function New-UiControl {
-    param([string]$Type,$Parent,[string]$Text,[int]$X,[int]$Y,[int]$Width,[int]$Height)
-    $c=New-Object ('System.Windows.Forms.'+$Type)
-    $c.Text=$Text; $c.Location=New-Object Drawing.Point($X,$Y); $c.Size=New-Object Drawing.Size($Width,$Height)
-    $Parent.Controls.Add($c); return $c
+if (-not $IsWindows) {
+    throw 'PSADToolkit interroge Active Directory via System.DirectoryServices, disponible uniquement sous Windows.'
 }
-function Show-UiError { param($Message) [void][Windows.Forms.MessageBox]::Show([string]$Message,'PSADToolkit',[Windows.Forms.MessageBoxButtons]::OK,[Windows.Forms.MessageBoxIcon]::Error) }
-function Get-UiConnection {
-    $p=@{}
-    if ($serverBox.Text.Trim()) { $p['Server']=$serverBox.Text.Trim() }
-    if ($otherAccount.Checked) {
-        if (-not $userBox.Text.Trim() -or -not $passwordBox.Text) { throw 'Indiquer le compte DOMAINE\utilisateur (ou UPN) et son mot de passe.' }
-        $secure=New-Object System.Security.SecureString
+if (-not (Get-Module -ListAvailable -Name GliderUI)) {
+    throw "Module GliderUI introuvable. Installer :`n    Install-PSResource -Name GliderUI`n    Install-GLIServer"
+}
+Import-Module GliderUI -ErrorAction Stop
+Import-Module (Join-Path $script:Root 'PSADToolkit.psd1') -Force -ErrorAction Stop
+# Helpers prives du module : l apercu d import doit calculer l OU cible et les groupes
+# exactement comme l import lui-meme, et le selecteur d OU reutilise le backend LDAP.
+. (Join-Path $script:Root 'Private\DirectoryBackend.ps1')
+. (Join-Path $script:Root 'Private\CsvHelpers.ps1')
+
+$script:Rows = @()
+$script:Operation = ''
+
+#--- Aides generales ----------------------------------------------------------
+
+function Get-ADTUiConnection {
+    $parameters = @{}
+    $server = $serverBox.Text
+    if ($server) { $server = $server.Trim() }
+    if ($server) { $parameters['Server'] = $server }
+    if ([bool]$otherAccount.IsChecked) {
+        $user = $userBox.Text
+        if ($user) { $user = $user.Trim() }
+        if (-not $user -or -not $passwordBox.Text) { throw 'Indiquer le compte DOMAINE\utilisateur (ou UPN) et son mot de passe.' }
+        $secure = New-Object System.Security.SecureString
         foreach ($character in $passwordBox.Text.ToCharArray()) { $secure.AppendChar($character) }
         $secure.MakeReadOnly()
-        $p['Credential']=New-Object System.Management.Automation.PSCredential($userBox.Text.Trim(),$secure)
+        $parameters['Credential'] = New-Object System.Management.Automation.PSCredential($user, $secure)
     }
-    return $p
+    return $parameters
 }
 
-function New-FieldSpec {
-    param([string]$Key,[string]$Label,[string]$Kind)
-    return (New-Object PSObject -Property @{Key=$Key;Label=$Label;Kind=$Kind;Required=([bool]$Label.EndsWith('*'))})
+function Get-ADTUiParentDN {
+    param([string]$DN)
+    for ($i = 0; $i -lt $DN.Length; $i++) {
+        if ($DN[$i] -eq ',' -and ($i -eq 0 -or $DN[$i - 1] -ne '\')) { return $DN.Substring($i + 1) }
+    }
+    return ''
 }
-function Open-UiDirectoryEntry {
-    param([string]$DN,[string]$Server,[System.Management.Automation.PSCredential]$Credential)
-    $path='LDAP://'
-    if ($Server) { $path += $Server + '/' }
-    $path += $DN
-    $entry=New-Object System.DirectoryServices.DirectoryEntry
-    $entry.Path=$path
-    $entry.AuthenticationType=[System.DirectoryServices.AuthenticationTypes]::Secure -bor [System.DirectoryServices.AuthenticationTypes]::Signing -bor [System.DirectoryServices.AuthenticationTypes]::Sealing
-    if ($Credential) { $entry.Username=$Credential.UserName; $entry.Password=$Credential.GetNetworkCredential().Password }
-    $null=$entry.NativeObject
-    return ,$entry
+
+function Get-ADTUiDNDepth {
+    param([string]$DN)
+    $depth = 0
+    for ($i = 0; $i -lt $DN.Length; $i++) {
+        if ($DN[$i] -eq ',' -and ($i -eq 0 -or $DN[$i - 1] -ne '\')) { $depth++ }
+    }
+    return $depth
 }
-function Show-OUSelectionDialog {
-    param([string]$CurrentDN)
-    $conn=Get-UiConnection
-    $server=''; $credential=$null
-    if ($conn.ContainsKey('Server')) { $server=[string]$conn['Server'] }
-    if ($conn.ContainsKey('Credential')) { $credential=$conn['Credential'] }
-    $root=Open-UiDirectoryEntry -DN 'RootDSE' -Server $server -Credential $credential
+
+function New-ADTUiDataGrid {
+    # Les colonnes des resultats changent d une commande a l autre. Les colonnes d un
+    # DataGrid Avalonia se declarent en XAML : on genere donc la grille a chaque fois.
+    param([hashtable[]]$Column)
+    $xaml = New-Object System.Text.StringBuilder
+    [void]$xaml.AppendLine('<DataGrid xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"')
+    [void]$xaml.AppendLine('    IsReadOnly="True" CanUserResizeColumns="True" CanUserSortColumns="True" GridLinesVisibility="Horizontal">')
+    [void]$xaml.AppendLine('  <DataGrid.Columns>')
+    foreach ($item in $Column) {
+        $header = [System.Security.SecurityElement]::Escape([string]$item['Header'])
+        [void]$xaml.AppendLine(('    <DataGridTextColumn Header="{0}" Binding="{{Binding {1}}}" SortMemberPath="{1}" />' -f $header, [string]$item['Path']))
+    }
+    [void]$xaml.AppendLine('  </DataGrid.Columns>')
+    [void]$xaml.AppendLine('</DataGrid>')
+    $grid = [AvaloniaRuntimeXamlLoader]::Parse($xaml.ToString(), $null)
+    foreach ($column in $grid.Columns) {
+        if ($column.SortMemberPath) { $column.CustomSortComparer = [DataSourcePropertyComparer]::new($column.SortMemberPath) }
+    }
+    return $grid
+}
+
+function New-ADTUiDataSourceList {
+    param([hashtable[]]$Column, $Row)
+    $items = [GliderUI.System.Collections.ObjectModel.ObservableCollection[DataSource]]::new()
+    foreach ($item in $Row) {
+        $values = @{}
+        foreach ($column in $Column) {
+            $path = [string]$column['Path']
+            $values[$path] = [string]$item.$path
+        }
+        $items.Add([DataSource]$values)
+    }
+    # Virgule unaire : sans elle PowerShell deroule la collection et le DataGrid
+    # recevrait des elements isoles au lieu de la source liee.
+    return , $items
+}
+
+#--- Fenetres secondaires -----------------------------------------------------
+
+function Show-ADTUiDialog {
+    # Avalonia n a pas de MessageBox. Une fenetre fille affichee puis attendue avec
+    # WaitForClosed joue le role d une boite modale : les callbacks continuent d etre
+    # traites pendant l attente.
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$AcceptText = 'Fermer',
+        [string]$CancelText
+    )
+    $state = @{ Accepted = $false }
+
+    $text = [TextBlock]::new()
+    $text.Text = $Message
+    $text.TextWrapping = 'Wrap'
+
+    $scroll = [ScrollViewer]::new()
+    $scroll.Content = $text
+    $scroll.MaxHeight = 260
+
+    $buttons = [StackPanel]::new()
+    $buttons.Orientation = 'Horizontal'
+    $buttons.Spacing = 12
+    $buttons.HorizontalAlignment = 'Right'
+
+    $dialog = [Window]::new()
+    $dialog.Title = $Title
+    $dialog.Width = 640
+    $dialog.Height = 320
+    $dialog.WindowStartupLocation = 'CenterOwner'
+
+    if ($CancelText) {
+        $cancel = [Button]::new()
+        $cancel.Content = $CancelText
+        $cancel.Width = 150
+        $cancel.HorizontalContentAlignment = 'Center'
+        $cancel.AddClick({ $dialog.Close() }.GetNewClosure())
+        $buttons.Children.Add($cancel)
+    }
+
+    $accept = [Button]::new()
+    $accept.Content = $AcceptText
+    $accept.Width = 150
+    $accept.HorizontalContentAlignment = 'Center'
+    $accept.Classes.Add('accent')
+    $accept.AddClick({ $state.Accepted = $true; $dialog.Close() }.GetNewClosure())
+    $buttons.Children.Add($accept)
+
+    $panel = [StackPanel]::new()
+    $panel.Margin = [Thickness]::new(20)
+    $panel.Spacing = 18
+    $panel.Children.Add($scroll)
+    $panel.Children.Add($buttons)
+
+    $dialog.Content = $panel
+    $dialog.Show()
+    $dialog.WaitForClosed()
+    return $state.Accepted
+}
+
+function Show-ADTUiError {
+    param([string]$Message)
+    $null = Show-ADTUiDialog -Title 'PSADToolkit - erreur' -Message $Message
+}
+
+function Get-ADTUiOrganizationalUnit {
+    param([string]$SearchBase, [string]$Server, [System.Management.Automation.PSCredential]$Credential)
+    $scope = @{ DN = $SearchBase }
+    if ($Server) { $scope['Server'] = $Server }
+    if ($Credential) { $scope['Credential'] = $Credential }
+    $entry = Open-ADTEntry @scope
+    $search = New-Object System.DirectoryServices.DirectorySearcher($entry)
+    $results = $null
     try {
-        $domainDN=[string]$root.Properties['defaultNamingContext'][0]
-        if (-not $server) { $server=[string]$root.Properties['dnsHostName'][0] }
-    } finally { $root.Dispose() }
+        $search.Filter = '(objectClass=organizationalUnit)'
+        $search.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
+        $search.PageSize = 1000
+        $search.ClientTimeout = New-TimeSpan -Seconds 60
+        $search.ServerTimeLimit = New-TimeSpan -Seconds 60
+        $search.ReferralChasing = [System.DirectoryServices.ReferralChasingOption]::None
+        [void]$search.PropertiesToLoad.Add('distinguishedName')
+        [void]$search.PropertiesToLoad.Add('name')
+        $results = $search.FindAll()
+        foreach ($result in $results) {
+            [PSCustomObject]@{
+                Name = [string]$result.Properties['name'][0]
+                DN   = [string]$result.Properties['distinguishedname'][0]
+            }
+        }
+    } finally {
+        if ($results) { $results.Dispose() }
+        $search.Dispose()
+        $entry.Dispose()
+    }
+}
+
+function Select-ADTUiOrganizationalUnit {
+    # L arbre est charge en une seule requete puis reconstruit a partir des DN. Avalonia
+    # n expose pas d evenement "avant expansion" exploitable pour un chargement paresseux.
+    $connection = Get-ADTUiConnection
+    $domain = Get-ADTNativeDomain @connection
+    $domainDN = [string]$domain.DistinguishedName
     if (-not $domainDN) { throw 'Impossible de determiner le domaine Active Directory.' }
 
-    $dialog=New-Object Windows.Forms.Form
-    $dialog.Text='Selectionner une OU'; $dialog.Size=New-Object Drawing.Size(720,560); $dialog.StartPosition='CenterParent'
-    $tree=New-UiControl 'TreeView' $dialog '' 12 12 680 435; $tree.Anchor='Top,Bottom,Left,Right'; $tree.HideSelection=$false
-    $dnBox=New-UiControl 'TextBox' $dialog '' 12 455 680 23; $dnBox.Anchor='Bottom,Left,Right'; $dnBox.ReadOnly=$true
-    $ok=New-UiControl 'Button' $dialog 'Selectionner' 490 488 98 30; $ok.Anchor='Bottom,Right'; $ok.DialogResult=[Windows.Forms.DialogResult]::OK
-    $cancel=New-UiControl 'Button' $dialog 'Annuler' 594 488 98 30; $cancel.Anchor='Bottom,Right'; $cancel.DialogResult=[Windows.Forms.DialogResult]::Cancel
-    $dialog.AcceptButton=$ok; $dialog.CancelButton=$cancel
+    $scope = @{ Server = [string]$domain.Server }
+    if ($connection.ContainsKey('Credential')) { $scope['Credential'] = $connection['Credential'] }
+    $organizationalUnits = @(Get-ADTUiOrganizationalUnit -SearchBase $domainDN @scope |
+        Sort-Object -Property @{ Expression = { Get-ADTUiDNDepth $_.DN } }, Name)
 
-    $domainNode=New-Object Windows.Forms.TreeNode($domainDN); $domainNode.Tag=$domainDN
-    $dummy=New-Object Windows.Forms.TreeNode('Chargement...'); $dummy.Tag='__DUMMY__'; [void]$domainNode.Nodes.Add($dummy); [void]$tree.Nodes.Add($domainNode)
+    $rootItem = [TreeViewItem]::new()
+    $rootItem.Header = $domainDN
+    $rootItem.Tag = $domainDN
+    $rootItem.IsExpanded = $true
 
-    $loadChildren={
-        param($node)
-        if ($node.Nodes.Count -eq 1 -and [string]$node.Nodes[0].Tag -eq '__DUMMY__') {
-            $node.Nodes.Clear()
-            $base=Open-UiDirectoryEntry -DN ([string]$node.Tag) -Server $server -Credential $credential
-            $searcher=New-Object System.DirectoryServices.DirectorySearcher($base)
-            try {
-                $searcher.SearchScope=[System.DirectoryServices.SearchScope]::OneLevel
-                $searcher.Filter='(objectClass=organizationalUnit)'; $searcher.PageSize=1000
-                [void]$searcher.PropertiesToLoad.Add('distinguishedName'); [void]$searcher.PropertiesToLoad.Add('name')
-                $children=@($searcher.FindAll() | ForEach-Object {
-                    New-Object PSObject -Property @{Name=[string]$_.Properties['name'][0];DN=[string]$_.Properties['distinguishedname'][0]}
-                } | Sort-Object Name)
-                foreach ($child in $children) {
-                    $n=New-Object Windows.Forms.TreeNode($child.Name); $n.Tag=$child.DN
-                    $d=New-Object Windows.Forms.TreeNode('Chargement...'); $d.Tag='__DUMMY__'; [void]$n.Nodes.Add($d); [void]$node.Nodes.Add($n)
-                }
-            } finally { $searcher.Dispose(); $base.Dispose() }
-        }
+    $index = @{ $domainDN = $rootItem }
+    foreach ($organizationalUnit in $organizationalUnits) {
+        $item = [TreeViewItem]::new()
+        $item.Header = $organizationalUnit.Name
+        $item.Tag = $organizationalUnit.DN
+        $parent = $rootItem
+        $parentDN = Get-ADTUiParentDN $organizationalUnit.DN
+        if ($parentDN -and $index.ContainsKey($parentDN)) { $parent = $index[$parentDN] }
+        $parent.Items.Add($item) | Out-Null
+        $index[$organizationalUnit.DN] = $item
     }
-    $tree.Add_BeforeExpand({ param($sender,$e) & $loadChildren $e.Node })
-    $tree.Add_AfterSelect({ $dnBox.Text=[string]$tree.SelectedNode.Tag })
-    & $loadChildren $domainNode; $domainNode.Expand()
-    $tree.SelectedNode=$domainNode
 
-    try {
-        if ($dialog.ShowDialog($form) -eq [Windows.Forms.DialogResult]::OK -and $tree.SelectedNode) { return [string]$tree.SelectedNode.Tag }
-        return $null
-    } finally { $dialog.Dispose() }
+    $tree = [TreeView]::new()
+    $tree.Height = 420
+    $tree.Items.Add($rootItem) | Out-Null
+
+    $dnBox = [TextBox]::new()
+    $dnBox.IsReadOnly = $true
+    $dnBox.Text = $domainDN
+
+    $tree.AddSelectionChanged({
+            $selected = $tree.SelectedItem
+            if ($selected) { $dnBox.Text = [string]$selected.Tag }
+        }.GetNewClosure())
+
+    $state = @{ DN = $null }
+    $dialog = [Window]::new()
+    $dialog.Title = 'Selectionner une unite d organisation'
+    $dialog.Width = 760
+    $dialog.Height = 620
+    $dialog.WindowStartupLocation = 'CenterOwner'
+
+    $cancel = [Button]::new()
+    $cancel.Content = 'Annuler'
+    $cancel.Width = 150
+    $cancel.HorizontalContentAlignment = 'Center'
+    $cancel.AddClick({ $dialog.Close() }.GetNewClosure())
+
+    $accept = [Button]::new()
+    $accept.Content = 'Selectionner'
+    $accept.Width = 150
+    $accept.HorizontalContentAlignment = 'Center'
+    $accept.Classes.Add('accent')
+    $accept.AddClick({ $state.DN = $dnBox.Text; $dialog.Close() }.GetNewClosure())
+
+    $buttons = [StackPanel]::new()
+    $buttons.Orientation = 'Horizontal'
+    $buttons.Spacing = 12
+    $buttons.HorizontalAlignment = 'Right'
+    $buttons.Children.Add($cancel)
+    $buttons.Children.Add($accept)
+
+    $count = [TextBlock]::new()
+    $count.Text = ('{0} unite(s) d organisation lue(s) dans {1}.' -f $organizationalUnits.Count, $domainDN)
+    $count.TextWrapping = 'Wrap'
+
+    $panel = [StackPanel]::new()
+    $panel.Margin = [Thickness]::new(18)
+    $panel.Spacing = 12
+    $panel.Children.Add($count)
+    $panel.Children.Add($tree)
+    $panel.Children.Add($dnBox)
+    $panel.Children.Add($buttons)
+
+    $dialog.Content = $panel
+    $dialog.Show()
+    $dialog.WaitForClosed()
+    return $state.DN
 }
-function Read-UiFlexibleCsv {
-    param([string]$Path,[char]$Delimiter)
-    Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
-    $parser=New-Object Microsoft.VisualBasic.FileIO.TextFieldParser($Path,[Text.Encoding]::UTF8,$true)
-    $list=New-Object System.Collections.ArrayList
-    try {
-        $parser.TextFieldType=[Microsoft.VisualBasic.FileIO.FieldType]::Delimited; $parser.SetDelimiters(@([string]$Delimiter)); $parser.HasFieldsEnclosedInQuotes=$true
-        $header=$parser.ReadFields(); if (-not $header) { throw 'En-tete CSV invalide.' }
-        $groupIndex=-1
-        for ($i=0;$i -lt $header.Count;$i++) { $header[$i]=([string]$header[$i]).TrimStart([char]0xFEFF).Trim(); if ($header[$i] -eq 'Groups') { $groupIndex=$i } }
-        while (-not $parser.EndOfData) {
-            $cells=$parser.ReadFields(); if (-not $cells) { continue }
-            if ($cells.Count -gt $header.Count -and $groupIndex -ge 0) {
-                $extra=$cells.Count-$header.Count; $fixed=New-Object string[] $header.Count
-                for ($j=0;$j -lt $groupIndex;$j++) { $fixed[$j]=[string]$cells[$j] }
-                $parts=New-Object System.Collections.ArrayList
-                for ($j=$groupIndex;$j -le ($groupIndex+$extra);$j++) { if ([string]$cells[$j]) { [void]$parts.Add(([string]$cells[$j]).Trim()) } }
-                $fixed[$groupIndex]=[string]($parts -join ';')
-                for ($j=$groupIndex+1;$j -lt $header.Count;$j++) { $fixed[$j]=[string]$cells[$j+$extra] }
-                $cells=$fixed
-            }
-            $o=New-Object PSObject
-            for ($j=0;$j -lt $header.Count;$j++) { $v=''; if ($j -lt $cells.Count) { $v=[string]$cells[$j] }; $o | Add-Member NoteProperty $header[$j] $v }
-            [void]$list.Add($o)
-        }
-    } finally { $parser.Close(); $parser.Dispose() }
-    # Retourner chaque ligne directement. Une virgule unaire ici creerait un
-    # tableau imbrique et casserait l apercu ainsi que la detection des colonnes.
-    return $list.ToArray()
-}
-function Show-ImportPreviewDialog {
+
+function Show-ADTUiImportPreview {
     param([hashtable]$Parameters)
     if (-not $Parameters['Path']) { throw 'Selectionner un fichier CSV.' }
     if (-not $Parameters['DefaultOU']) { throw 'Selectionner l OU de destination avant de poursuivre l import.' }
-    $delimiter=[char]';'; if ($Parameters.ContainsKey('Delimiter')) { $delimiter=[char]$Parameters['Delimiter'] }
-    $rows=@(Read-UiFlexibleCsv -Path $Parameters['Path'] -Delimiter $delimiter)
+    $delimiter = [char]';'
+    if ($Parameters.ContainsKey('Delimiter')) { $delimiter = [char]$Parameters['Delimiter'] }
+    $rows = @(Read-ADTFlexibleCsv -Path ([string]$Parameters['Path']) -Delimiter $delimiter)
     if (-not $rows.Count) { throw 'Le fichier CSV ne contient aucune ligne.' }
-    $table=New-Object System.Data.DataTable
-    foreach ($name in @('Prenom','Nom','Departement','OU cible','Groupes')) { [void]$table.Columns.Add($name,[string]) }
+
+    $defaultGroups = @()
+    if ($Parameters['DefaultGroups']) { $defaultGroups = [string[]]@($Parameters['DefaultGroups']) }
+    $createDepartmentOUs = [bool]$Parameters['CreateDepartmentOUs']
+    $defaultOU = [string]$Parameters['DefaultOU']
+
+    $preview = @()
     foreach ($row in $rows) {
-        $target=''
-        if ($Parameters['CreateDepartmentOUs']) {
-            $target=[string]$Parameters['DefaultOU']; $dept=([string]$row.Department).Trim()
-            if ($dept) { $safe=$dept.Replace('\','\\').Replace(',','\\,').Replace('+','\\+').Replace('"','\\"').Replace('<','\\<').Replace('>','\\>').Replace(';','\\;').Replace('=','\\='); $target='OU='+$safe+','+$target }
-        } else { $target=[string]$Parameters['DefaultOU'] }
-        $groups=New-Object System.Collections.ArrayList
-        if ($Parameters['DefaultGroups']) { foreach ($g in $Parameters['DefaultGroups']) { if ($g) { [void]$groups.Add($g) } } }
-        if ($row.PSObject.Properties['Groups'] -and $row.Groups) { foreach ($g in (([string]$row.Groups)-split ';')) { if ($g.Trim()) { [void]$groups.Add($g.Trim()) } } }
-        $r=$table.NewRow(); $r['Prenom']=[string]$row.GivenName; $r['Nom']=[string]$row.Surname; $r['Departement']=[string]$row.Department; $r['OU cible']=$target; $r['Groupes']=$groups -join '; '; $table.Rows.Add($r)
-    }
-    $d=New-Object Windows.Forms.Form; $d.Text='Apercu avant import'; $d.Size=New-Object Drawing.Size(1000,600); $d.StartPosition='CenterParent'
-    $lab=New-UiControl 'Label' $d ('Apercu de '+$rows.Count+' utilisateur(s). Verifier les OU et les groupes avant de continuer.') 12 12 950 23
-    $g=New-UiControl 'DataGridView' $d '' 12 42 960 470; $g.Anchor='Top,Bottom,Left,Right'; $g.ReadOnly=$true; $g.AllowUserToAddRows=$false; $g.RowHeadersVisible=$false; $g.AutoSizeColumnsMode='DisplayedCells'; $g.DataSource=$table
-    $go=New-UiControl 'Button' $d 'Continuer' 760 525 100 30; $go.Anchor='Bottom,Right'; $go.DialogResult=[Windows.Forms.DialogResult]::OK
-    $no=New-UiControl 'Button' $d 'Annuler' 872 525 100 30; $no.Anchor='Bottom,Right'; $no.DialogResult=[Windows.Forms.DialogResult]::Cancel
-    $d.AcceptButton=$go; $d.CancelButton=$no
-    try { return ($d.ShowDialog($form) -eq [Windows.Forms.DialogResult]::OK) } finally { $d.Dispose() }
-}
-function Start-UiOperation {
-    param([string]$Command,[hashtable]$Parameters)
-    if ($script:Worker) { return }
-    $script:Operation=$Command
-    $script:Rows=@(); $grid.DataSource=$null; $details.Clear()
-    $statusLabel.Text='Traitement en cours : '+$Command
-    $connection.Enabled=$false; $tabs.Enabled=$false; $exportButton.Enabled=$false
-    $progress.Style='Marquee'
-    try {
-        $script:Runspace=[RunspaceFactory]::CreateRunspace()
-        $script:Runspace.ApartmentState='STA'; $script:Runspace.ThreadOptions='ReuseThread'; $script:Runspace.Open()
-        $script:Worker=[PowerShell]::Create(); $script:Worker.Runspace=$script:Runspace
-        $workerScript={
-            param($ModulePath,$Command,$Parameters)
-            $ErrorActionPreference='Stop'
-            Import-Module $ModulePath -Force -ErrorAction Stop
-            & $Command @Parameters
-        }
-        $null=$script:Worker.AddScript($workerScript.ToString()).AddArgument((Join-Path $script:Root 'PSADToolkit.psd1')).AddArgument($Command).AddArgument($Parameters)
-        $script:Handle=$script:Worker.BeginInvoke()
-        $timer.Start()
-    } catch {
-        if ($script:Worker) { $script:Worker.Dispose(); $script:Worker=$null }
-        if ($script:Runspace) { $script:Runspace.Dispose(); $script:Runspace=$null }
-        $connection.Enabled=$true; $tabs.Enabled=$true; $progress.Style='Blocks'
-        $statusLabel.Text='Echec du lancement'; Show-UiError $_.Exception.Message
-    }
-}
-function Update-UiGrid {
-    $table=New-Object System.Data.DataTable
-    if ($script:Rows.Count) {
-        $names=@($script:Rows[0].PSObject.Properties | ForEach-Object { $_.Name })
-        foreach ($name in $names) {
-            if ($name -eq 'Password' -and -not $showPasswords.Checked) { continue }
-            [void]$table.Columns.Add($name,[string])
-        }
-        foreach ($item in $script:Rows) {
-            $row=$table.NewRow()
-            foreach ($col in $table.Columns) { $row[$col.ColumnName]=[string]$item.($col.ColumnName) }
-            $table.Rows.Add($row)
+        $preview += [PSCustomObject]@{
+            Prenom      = [string]$row.GivenName
+            Nom         = [string]$row.Surname
+            Departement = [string]$row.Department
+            OU          = [string](Get-ADTImportTargetOU -Row $row -DefaultOU $defaultOU -CreateDepartmentOUs $createDepartmentOUs)
+            Groupes     = ((Get-ADTCsvRowGroups -Row $row -DefaultGroups $defaultGroups) -join '; ')
         }
     }
-    $grid.DataSource=$table
-    $exportButton.Enabled=($script:Rows.Count -gt 0)
+
+    $columns = @(
+        @{ Header = 'Prenom'; Path = 'Prenom' },
+        @{ Header = 'Nom'; Path = 'Nom' },
+        @{ Header = 'Departement'; Path = 'Departement' },
+        @{ Header = 'OU cible'; Path = 'OU' },
+        @{ Header = 'Groupes'; Path = 'Groupes' }
+    )
+    $grid = New-ADTUiDataGrid -Column $columns
+    $grid.ItemsSource = New-ADTUiDataSourceList -Column $columns -Row $preview
+    $grid.Height = 420
+
+    $state = @{ Accepted = $false }
+    $dialog = [Window]::new()
+    $dialog.Title = 'Apercu avant import'
+    $dialog.Width = 1080
+    $dialog.Height = 640
+    $dialog.WindowStartupLocation = 'CenterOwner'
+
+    $cancel = [Button]::new()
+    $cancel.Content = 'Annuler'
+    $cancel.Width = 150
+    $cancel.HorizontalContentAlignment = 'Center'
+    $cancel.AddClick({ $dialog.Close() }.GetNewClosure())
+
+    $accept = [Button]::new()
+    $accept.Content = 'Continuer'
+    $accept.Width = 150
+    $accept.HorizontalContentAlignment = 'Center'
+    $accept.Classes.Add('accent')
+    $accept.AddClick({ $state.Accepted = $true; $dialog.Close() }.GetNewClosure())
+
+    $buttons = [StackPanel]::new()
+    $buttons.Orientation = 'Horizontal'
+    $buttons.Spacing = 12
+    $buttons.HorizontalAlignment = 'Right'
+    $buttons.Children.Add($cancel)
+    $buttons.Children.Add($accept)
+
+    $header = [TextBlock]::new()
+    $header.Text = ('Apercu de {0} utilisateur(s). Verifier les OU et les groupes avant de continuer.' -f $rows.Count)
+    $header.TextWrapping = 'Wrap'
+
+    $panel = [StackPanel]::new()
+    $panel.Margin = [Thickness]::new(18)
+    $panel.Spacing = 12
+    $panel.Children.Add($header)
+    $panel.Children.Add($grid)
+    $panel.Children.Add($buttons)
+
+    $dialog.Content = $panel
+    $dialog.Show()
+    $dialog.WaitForClosed()
+    return $state.Accepted
 }
 
-$form=New-Object Windows.Forms.Form
-$form.Text='PSADToolkit 2.1.4-test1 | Administration Active Directory'
-$form.Size=New-Object Drawing.Size(1110,850); $form.MinimumSize=New-Object Drawing.Size(1020,780)
-$form.StartPosition='CenterScreen'; $form.Font=New-Object Drawing.Font('Segoe UI',9)
-$form.BackColor=[Drawing.Color]::FromArgb(242,245,249)
-$header=New-UiControl 'Panel' $form '' 0 0 1090 65
-$header.BackColor=[Drawing.Color]::FromArgb(22,40,64); $header.Anchor='Top,Left,Right'
-$title=New-UiControl 'Label' $header 'PSADToolkit' 22 10 270 30
-$title.ForeColor=[Drawing.Color]::White; $title.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold)
-$subtitle=New-UiControl 'Label' $header 'Comptes, accès et audits Active Directory' 305 23 700 25
-$subtitle.ForeColor=[Drawing.Color]::FromArgb(190,212,237)
-$connection=New-UiControl 'GroupBox' $form 'Connexion au domaine' 15 75 1060 110
-$connection.Anchor='Top,Left,Right'
-$null=New-UiControl 'Label' $connection 'Contrôleur de domaine (FQDN, vide = automatique)' 15 22 340 20
-$serverBox=New-UiControl 'TextBox' $connection '' 15 45 330 25
-$otherAccount=New-UiControl 'CheckBox' $connection 'Autre compte' 365 21 155 22
-$userBox=New-UiControl 'TextBox' $connection '' 365 46 235 25
-$passwordBox=New-UiControl 'TextBox' $connection '' 615 46 220 25; $passwordBox.UseSystemPasswordChar=$true
-$null=New-UiControl 'Label' $connection 'Mot de passe' 615 23 200 20
-$testButton=New-UiControl 'Button' $connection 'Tester la connexion' 850 43 190 30
-$userBox.Enabled=$false; $passwordBox.Enabled=$false
-$otherAccount.Add_CheckedChanged({ $userBox.Enabled=$otherAccount.Checked; $passwordBox.Enabled=$otherAccount.Checked; if (-not $otherAccount.Checked) { $passwordBox.Clear() } })
-$null=New-UiControl 'Label' $connection 'Compte de la session Windows utilise par defaut. Les droits AD delegues suffisent.' 15 80 1000 22
-$testButton.Add_Click({ try { Start-UiOperation 'Test-ADTPrerequisite' (Get-UiConnection) } catch { Show-UiError $_.Exception.Message } })
+#--- Definition des onglets ---------------------------------------------------
 
-$tabs=New-UiControl 'TabControl' $form '' 15 195 1060 320
-$tabs.Anchor='Top,Left,Right'
-# Each operation has a compact form. Keys map directly to existing public parameters.
-$specs=@(
- (New-Object PSObject -Property @{Title='Creer un compte';Command='New-ADTUser';Write=$true;Fields=@(
-    (New-FieldSpec 'GivenName' 'Prenom *' 'text'),(New-FieldSpec 'Surname' 'Nom *' 'text'),(New-FieldSpec 'Path' 'OU cible (DN) *' 'ou'),(New-FieldSpec 'SamAccountName' 'Identifiant (vide = automatique)' 'text'),(New-FieldSpec 'Department' 'Service' 'text'),(New-FieldSpec 'Title' 'Fonction' 'text'),(New-FieldSpec 'Groups' 'Groupes (separes par ;)' 'list'),(New-FieldSpec 'EmailAddress' 'Courriel' 'text'),(New-FieldSpec 'HomeDirectoryRoot' 'Racine du dossier personnel (UNC)' 'text'),(New-FieldSpec 'HomeDrive' 'Lecteur (ex. H:)' 'text'),(New-FieldSpec 'Disabled' 'Creer le compte desactive' 'check'))}),
- (New-Object PSObject -Property @{Title='Importer un CSV';Command='Import-ADTUserFromCsv';Write=$true;Fields=@(
-    (New-FieldSpec 'Path' 'Fichier CSV *' 'open'),(New-FieldSpec 'DefaultOU' 'OU de destination *' 'ou'),(New-FieldSpec 'DefaultGroups' 'Groupes par defaut (;)' 'list'),(New-FieldSpec 'Delimiter' 'Separateur du CSV' 'delimiter'),(New-FieldSpec 'CreateDepartmentOUs' 'Creer automatiquement une sous-OU par departement' 'check'),(New-FieldSpec 'PasswordReportPath' 'Rapport des mots de passe (facultatif)' 'savecsv'),(New-FieldSpec 'SkipExisting' 'Ignorer les identifiants deja existants' 'check'))}),
- (New-Object PSObject -Property @{Title='Groupes';Command='Set-ADTUserGroupMembership';Write=$true;Fields=@(
-    (New-FieldSpec 'Identity' 'Utilisateurs (identifiants separes par ;) *' 'list'),(New-FieldSpec 'AddGroup' 'Groupes a ajouter (;)' 'list'),(New-FieldSpec 'RemoveGroup' 'Groupes a retirer (;)' 'list'))}),
- (New-Object PSObject -Property @{Title='Depart';Command='Start-ADTUserOffboarding';Write=$true;Fields=@(
-    (New-FieldSpec 'Identity' 'Utilisateurs (identifiants separes par ;) *' 'list'),(New-FieldSpec 'BackupPath' 'Dossier des sauvegardes *' 'folder'),(New-FieldSpec 'DisabledOU' 'OU de destination (DN, facultatif)' 'ou'),(New-FieldSpec 'Reason' 'Motif' 'text'),(New-FieldSpec 'KeepGroups' 'Conserver les groupes secondaires' 'check'),(New-FieldSpec 'NoPasswordReset' 'Conserver le mot de passe actuel' 'check'))}),
- (New-Object PSObject -Property @{Title='Comptes inactifs';Command='Get-ADTInactiveAccount';Write=$false;Fields=@(
-    (New-FieldSpec 'DaysInactive' 'Seuil en jours' 'number'),(New-FieldSpec 'SearchBase' 'Limiter a une OU (DN)' 'ou'),(New-FieldSpec 'IncludeDisabled' 'Inclure les comptes desactives' 'check'),(New-FieldSpec 'ExcludeNeverLoggedOn' 'Exclure les comptes jamais connectes' 'check'))}),
- (New-Object PSObject -Property @{Title='Privileges';Command='Get-ADTPrivilegedGroupMember';Write=$false;Fields=@((New-FieldSpec 'IncludeBuiltin' 'Inclure les groupes integres' 'check'))}),
- (New-Object PSObject -Property @{Title='Rapport HTML';Command='Export-ADTAccessReport';Write=$false;Fields=@(
-    (New-FieldSpec 'Path' 'Fichier HTML *' 'savehtml'),(New-FieldSpec 'DaysInactive' 'Seuil en jours' 'number'),(New-FieldSpec 'SearchBase' 'Limiter les comptes a une OU (DN)' 'ou'),(New-FieldSpec 'CsvFolder' 'Dossier CSV complementaire (facultatif)' 'folder'))})
+# Un champ est un tableau de trois chaines : cle du parametre, libelle, type de controle.
+# Un libelle termine par * marque un champ obligatoire. La virgule unaire de l onglet
+# Privileges conserve le tableau imbrique alors qu il n a qu un seul champ : sans elle,
+# PowerShell aplatit le tableau et l interface traite chaque caractere comme un champ.
+$specs = @(
+    @{ Title = 'Creer un compte'; Command = 'New-ADTUser'; Write = $true; Fields = @(
+            @('GivenName', 'Prenom *', 'text'),
+            @('Surname', 'Nom *', 'text'),
+            @('Path', 'OU cible (DN) *', 'ou'),
+            @('SamAccountName', 'Identifiant (vide = automatique)', 'text'),
+            @('Department', 'Service', 'text'),
+            @('Title', 'Fonction', 'text'),
+            @('Groups', 'Groupes (separes par ;)', 'list'),
+            @('EmailAddress', 'Courriel', 'text'),
+            @('HomeDirectoryRoot', 'Racine du dossier personnel (UNC)', 'text'),
+            @('HomeDrive', 'Lecteur (ex. H:)', 'text'),
+            @('Disabled', 'Creer le compte desactive', 'check')
+        )
+    },
+    @{ Title = 'Importer un CSV'; Command = 'Import-ADTUserFromCsv'; Write = $true; Fields = @(
+            @('Path', 'Fichier CSV *', 'open'),
+            @('DefaultOU', 'OU de destination *', 'ou'),
+            @('DefaultGroups', 'Groupes par defaut (;)', 'list'),
+            @('Delimiter', 'Separateur du CSV', 'delimiter'),
+            @('CreateDepartmentOUs', 'Creer automatiquement une sous-OU par departement', 'check'),
+            @('PasswordReportPath', 'Rapport des mots de passe (facultatif)', 'savecsv'),
+            @('SkipExisting', 'Ignorer les identifiants deja existants', 'check')
+        )
+    },
+    @{ Title = 'Groupes'; Command = 'Set-ADTUserGroupMembership'; Write = $true; Fields = @(
+            @('Identity', 'Utilisateurs (identifiants separes par ;) *', 'list'),
+            @('AddGroup', 'Groupes a ajouter (;)', 'list'),
+            @('RemoveGroup', 'Groupes a retirer (;)', 'list')
+        )
+    },
+    @{ Title = 'Depart'; Command = 'Start-ADTUserOffboarding'; Write = $true; Fields = @(
+            @('Identity', 'Utilisateurs (identifiants separes par ;) *', 'list'),
+            @('BackupPath', 'Dossier des sauvegardes *', 'folder'),
+            @('DisabledOU', 'OU de destination (DN, facultatif)', 'ou'),
+            @('Reason', 'Motif', 'text'),
+            @('KeepGroups', 'Conserver les groupes secondaires', 'check'),
+            @('NoPasswordReset', 'Conserver le mot de passe actuel', 'check')
+        )
+    },
+    @{ Title = 'Comptes inactifs'; Command = 'Get-ADTInactiveAccount'; Write = $false; Fields = @(
+            @('DaysInactive', 'Seuil en jours', 'number'),
+            @('SearchBase', 'Limiter a une OU (DN)', 'ou'),
+            @('IncludeDisabled', 'Inclure les comptes desactives', 'check'),
+            @('ExcludeNeverLoggedOn', 'Exclure les comptes jamais connectes', 'check')
+        )
+    },
+    @{ Title = 'Privileges'; Command = 'Get-ADTPrivilegedGroupMember'; Write = $false; Fields = @(
+            , @('IncludeBuiltin', 'Inclure les groupes integres', 'check')
+        )
+    },
+    @{ Title = 'Rapport HTML'; Command = 'Export-ADTAccessReport'; Write = $false; Fields = @(
+            @('Path', 'Fichier HTML *', 'savehtml'),
+            @('DaysInactive', 'Seuil en jours', 'number'),
+            @('SearchBase', 'Limiter les comptes a une OU (DN)', 'ou'),
+            @('CsvFolder', 'Dossier CSV complementaire (facultatif)', 'folder')
+        )
+    }
 )
-foreach ($spec in $specs) {
-    $page=New-Object Windows.Forms.TabPage; $page.Text=$spec.Title; $page.BackColor=$form.BackColor; $page.AutoScroll=$true; $tabs.TabPages.Add($page)
-    $fields=@{}; $i=0
-    foreach ($field in $spec.Fields) {
-        $x=15+([int]($i%2)*515); $y=12+([int][Math]::Floor($i/2)*38)
-        $key=[string]$field.Key; $label=[string]$field.Label; $kind=[string]$field.Kind
-        if ($kind -eq 'check') { $control=New-UiControl 'CheckBox' $page $label $x ($y+13) 480 23 }
-        else {
-            $null=New-UiControl 'Label' $page $label $x $y 480 16
-            if ($kind -eq 'number') { $control=New-UiControl 'NumericUpDown' $page '' $x ($y+16) 465 22; $control.Minimum=1; $control.Maximum=3650; $control.Value=90 }
-            elseif ($kind -eq 'delimiter') { $control=New-UiControl 'ComboBox' $page '' $x ($y+16) 465 22; $control.DropDownStyle='DropDownList'; [void]$control.Items.Add(';'); [void]$control.Items.Add(','); $control.SelectedIndex=0 }
-            else {
-                $width=465; if (@('open','savecsv','savehtml','folder','ou') -contains $kind) { $width=425 }
-                $control=New-UiControl 'TextBox' $page '' $x ($y+16) $width 22
-                if ($key -eq 'Reason') { $control.Text='Depart de l employe' }
-                if ($width -eq 425) {
-                    $browse=New-UiControl 'Button' $page '...' ($x+430) ($y+14) 35 25
-                    $browse.Tag=@{Control=$control;Kind=$kind;Command=[string]$spec.Command;Fields=$fields}
-                    $browse.Add_Click({
-                        $tag=$this.Tag; $dialog=$null
-                        try {
-                            if ($tag.Kind -eq 'ou') { $selected=Show-OUSelectionDialog -CurrentDN $tag.Control.Text; if ($selected) { $tag.Control.Text=$selected }; return }
-                            if ($tag.Kind -eq 'folder') { $dialog=New-Object Windows.Forms.FolderBrowserDialog }
-                            elseif ($tag.Kind -eq 'open') { $dialog=New-Object Windows.Forms.OpenFileDialog; $dialog.Filter='CSV (*.csv)|*.csv|Tous les fichiers|*.*' }
-                            else { $dialog=New-Object Windows.Forms.SaveFileDialog; $dialog.Filter='CSV (*.csv)|*.csv'; if ($tag.Kind -eq 'savehtml') { $dialog.Filter='HTML (*.html)|*.html' } }
-                            if ($dialog.ShowDialog() -eq 'OK') {
-                                if ($tag.Kind -eq 'folder') { $tag.Control.Text=$dialog.SelectedPath }
-                                else {
-                                    $tag.Control.Text=$dialog.FileName
-                                    if ($tag.Kind -eq 'open' -and $tag.Command -eq 'Import-ADTUserFromCsv') {
-                                        $selectedOU=Show-OUSelectionDialog -CurrentDN ''
-                                        if (-not $selectedOU) { $tag.Control.Clear(); return }
-                                        if ($tag.Fields.ContainsKey('DefaultOU')) { $tag.Fields['DefaultOU'].Control.Text=$selectedOU }
-                                    }
-                                }
-                            }
-                        } catch { Show-UiError $_.Exception.Message } finally { if ($dialog) { $dialog.Dispose() } }
-                    })
-                }
-            }
+
+#--- Selecteurs de fichiers ---------------------------------------------------
+
+function Get-ADTUiStoragePath {
+    param($StorageItem)
+    if (-not $StorageItem) { return '' }
+    foreach ($item in $StorageItem) {
+        if (-not $item) { continue }
+        $uri = $item.Path
+        if (-not $uri) { continue }
+        $path = [string]$uri.LocalPath
+        if (-not $path) {
+            # AbsolutePath rend un chemin de la forme /C:/dossier/fichier.csv, encode.
+            $path = [System.Uri]::UnescapeDataString([string]$uri.AbsolutePath)
+            if ($path -match '^/[A-Za-z]:') { $path = $path.Substring(1) }
+            $path = $path.Replace('/', '\')
         }
-        $fields[$key]=@{Control=$control;Kind=$kind;Required=[bool]$field.Required}; $i++
+        if ($path) { return $path }
     }
-    $simulate=New-UiControl 'CheckBox' $page 'Simulation : verifier sans modifier Active Directory' 15 255 600 24
-    $simulate.Checked=$true; $simulate.Visible=[bool]$spec.Write
-    if (-not $spec.Write) { $null=New-UiControl 'Label' $page 'Lecture du domaine. Le rapport HTML et les exports creent des fichiers locaux.' 15 258 740 23 }
-    $run=New-UiControl 'Button' $page 'Executer' 850 252 170 30
-    if ($spec.Command -eq 'Import-ADTUserFromCsv') { $run.Text='Apercu / Importer' }
-    $run.Tag=@{Spec=$spec;Fields=$fields;Simulation=$simulate}
-    $run.Add_Click({
-        try {
-            $tag=$this.Tag; $p=Get-UiConnection
-            foreach ($key in $tag.Fields.Keys) {
-                $f=$tag.Fields[$key]; $c=$f.Control
-                if ($f.Kind -eq 'check') { if ($c.Checked) { $p[$key]=$true }; continue }
-                $value=$c.Text.Trim()
-                if ($f.Required -and -not $value) { throw ('Champ obligatoire : '+$key) }
-                if (-not $value) { continue }
-                if ($f.Kind -eq 'list') { $p[$key]=[string[]]@($value -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-                elseif ($f.Kind -eq 'number') { $p[$key]=[int]$c.Value }
-                elseif ($f.Kind -eq 'delimiter') { $p[$key]=[char]$value }
-                else { $p[$key]=$value }
-            }
-            if ($tag.Spec.Command -eq 'Import-ADTUserFromCsv') {
-                if (-not (Show-ImportPreviewDialog -Parameters $p)) { return }
-            }
-            if ($tag.Spec.Write) {
-                $p['WhatIf']=$tag.Simulation.Checked; $p['Confirm']=$false
-                if (-not $tag.Simulation.Checked) {
-                    $target='Domaine de la session'; if ($p['Server']) { $target=$p['Server'] }
-                    $summary='Operation : '+$tag.Spec.Title+"`r`nServeur : "+$target+"`r`n"
-                    foreach ($key in @('Identity','GivenName','Surname','Path','DefaultOU','Groups','DefaultGroups','AddGroup','RemoveGroup','DisabledOU','BackupPath')) { if ($p[$key]) { $summary += $key+' : '+($p[$key] -join '; ')+"`r`n" } }
-                    if ($p['CreateDepartmentOUs']) { $summary += "Sous-OU par departement : OUI`r`n" }
-                    $summary += "`r`nAppliquer ces modifications a Active Directory ?"
-                    if ([Windows.Forms.MessageBox]::Show($summary,'Confirmer les modifications','YesNo','Warning','Button2') -ne 'Yes') { return }
-                }
-            }
-            Start-UiOperation $tag.Spec.Command $p
-        } catch { Show-UiError $_.Exception.Message }
-    })
+    return ''
 }
-$null=New-UiControl 'Label' $form 'Résultats' 18 525 180 22
-$showPasswords=New-UiControl 'CheckBox' $form 'Afficher / exporter les mots de passe générés' 205 522 510 25
-$showPasswords.Add_CheckedChanged({ Update-UiGrid })
-$exportButton=New-UiControl 'Button' $form 'Exporter les résultats CSV' 855 519 220 30
-$exportButton.Anchor='Top,Right'; $exportButton.Enabled=$false
-$grid=New-UiControl 'DataGridView' $form '' 15 555 1060 140
-$grid.Anchor='Top,Bottom,Left,Right'; $grid.ReadOnly=$true; $grid.AllowUserToAddRows=$false; $grid.AllowUserToDeleteRows=$false
-$grid.AutoSizeColumnsMode='DisplayedCells'; $grid.BackgroundColor=[Drawing.Color]::White; $grid.RowHeadersVisible=$false
-$details=New-UiControl 'TextBox' $form '' 15 704 1060 60
-$details.Anchor='Bottom,Left,Right'; $details.Multiline=$true; $details.ReadOnly=$true; $details.ScrollBars='Vertical'
-$statusLabel=New-UiControl 'Label' $form 'Prêt. Commencer par tester la connexion.' 15 775 810 23
-$statusLabel.Anchor='Bottom,Left,Right'
-$progress=New-UiControl 'ProgressBar' $form '' 865 774 210 20
-$progress.Anchor='Bottom,Right'
-$timer=New-Object Windows.Forms.Timer; $timer.Interval=250
-$timer.Add_Tick({
-    if (-not $script:Handle -or -not $script:Handle.IsCompleted) { return }
-    $timer.Stop()
+
+function Invoke-ADTUiBrowse {
+    param([string]$Kind, [string]$Command, $Control, [hashtable]$Fields)
     try {
-        $script:Rows=@($script:Worker.EndInvoke($script:Handle))
-        $messages=@()
-        foreach ($w in $script:Worker.Streams.Warning) { $messages += 'AVERTISSEMENT : '+$w.Message }
-        foreach ($e in $script:Worker.Streams.Error) { $messages += 'ERREUR : '+$e.ToString() }
-        $details.Text=$messages -join "`r`n"
-        Update-UiGrid
-        $failures=@($script:Rows | Where-Object { $_.Status -eq 'Echec' -or $_.Status -eq 'Partiel' -or ($_.PSObject.Properties['Ready'] -and -not $_.Ready) }).Count
-        $statusLabel.Text=('{0} resultat(s). Verifier les colonnes Status, Error et Messages.' -f $script:Rows.Count)
-        if ($failures -or $script:Worker.Streams.Error.Count) { $statusLabel.Text='Termine avec erreurs : consulter les résultats et les messages.' }
-        if ($script:Operation -eq 'Test-ADTPrerequisite' -and $script:Rows.Count -gt 0 -and $script:Rows[0].Ready) {
-            $serverBox.Text=$script:Rows[0].Server
-            $statusLabel.Text='Connecte a '+$script:Rows[0].DomainName+' via '+$script:Rows[0].Server
+        if ($Kind -eq 'ou') {
+            $selected = Select-ADTUiOrganizationalUnit
+            if ($selected) { $Control.Text = $selected }
+            return
         }
-    } catch { $details.Text=$_.Exception.Message; $statusLabel.Text='Operation interrompue : consulter le detail.' }
-    finally {
-        if ($script:Worker) { $script:Worker.Dispose() }; if ($script:Runspace) { $script:Runspace.Dispose() }
-        $script:Worker=$null; $script:Runspace=$null; $script:Handle=$null
-        $connection.Enabled=$true; $tabs.Enabled=$true; $progress.Style='Blocks'
+        if ($Kind -eq 'folder') {
+            $options = [FolderPickerOpenOptions]::new()
+            $options.Title = 'Selectionner un dossier'
+            $path = Get-ADTUiStoragePath ($window.StorageProvider.OpenFolderPickerAsync($options).WaitForCompleted())
+            if ($path) { $Control.Text = $path }
+            return
+        }
+        if ($Kind -eq 'open') {
+            $options = [FilePickerOpenOptions]::new()
+            $options.Title = 'Selectionner un fichier CSV'
+            $path = Get-ADTUiStoragePath ($window.StorageProvider.OpenFilePickerAsync($options).WaitForCompleted())
+            if (-not $path) { return }
+            $Control.Text = $path
+            if ($Command -eq 'Import-ADTUserFromCsv') {
+                # L OU de destination est obligatoire : la demander dans la foulee.
+                $selected = Select-ADTUiOrganizationalUnit
+                if (-not $selected) { $Control.Text = ''; return }
+                if ($Fields.ContainsKey('DefaultOU')) { $Fields['DefaultOU'].Control.Text = $selected }
+            }
+            return
+        }
+        $options = [FilePickerSaveOptions]::new()
+        if ($Kind -eq 'savehtml') {
+            $options.Title = 'Enregistrer le rapport HTML'
+            $options.DefaultExtension = 'html'
+            $options.SuggestedFileName = 'rapport-acces.html'
+        } else {
+            $options.Title = 'Enregistrer le fichier CSV'
+            $options.DefaultExtension = 'csv'
+            $options.SuggestedFileName = 'psadtoolkit.csv'
+        }
+        $path = Get-ADTUiStoragePath ($window.StorageProvider.SaveFilePickerAsync($options).WaitForCompleted())
+        if ($path) { $Control.Text = $path }
+    } catch {
+        Show-ADTUiError $_.Exception.Message
     }
-})
-$exportButton.Add_Click({
-    $dialog=New-Object Windows.Forms.SaveFileDialog; $dialog.Filter='CSV (*.csv)|*.csv'
-    try {
-        if ($dialog.ShowDialog() -eq 'OK') {
-            $data=$script:Rows
-            if (-not $showPasswords.Checked) { $data=@($data | Select-Object * -ExcludeProperty Password) }
-            $data | Export-Csv -Path $dialog.FileName -Delimiter ';' -Encoding UTF8 -NoTypeInformation -ErrorAction Stop
-            $statusLabel.Text='Export enregistre : '+$dialog.FileName
+}
+
+#--- Construction des champs --------------------------------------------------
+
+function New-ADTUiField {
+    param([string]$Key, [string]$Label, [string]$Kind, [string]$Command, [hashtable]$Fields)
+    $panel = [StackPanel]::new()
+    $panel.Spacing = 4
+
+    if ($Kind -eq 'check') {
+        $control = [CheckBox]::new()
+        $control.Content = $Label
+        $panel.Margin = [Thickness]::new(0, 18, 0, 0)
+        $panel.Children.Add($control)
+    } else {
+        $caption = [TextBlock]::new()
+        $caption.Text = $Label
+        $panel.Children.Add($caption)
+
+        if ($Kind -eq 'number') {
+            $control = [NumericUpDown]::new()
+            $control.Minimum = 1
+            $control.Maximum = 3650
+            $control.Value = 90
+            $panel.Children.Add($control)
+        } elseif ($Kind -eq 'delimiter') {
+            $control = [ComboBox]::new()
+            $control.Items.Add(';') | Out-Null
+            $control.Items.Add(',') | Out-Null
+            $control.SelectedIndex = 0
+            $control.HorizontalAlignment = 'Stretch'
+            $panel.Children.Add($control)
+        } else {
+            $control = [TextBox]::new()
+            if ($Key -eq 'Reason') { $control.Text = 'Depart de l employe' }
+            if (@('ou', 'open', 'savecsv', 'savehtml', 'folder') -contains $Kind) {
+                $browse = [Button]::new()
+                $browse.Content = '...'
+                $browse.Width = 44
+                $browse.HorizontalContentAlignment = 'Center'
+                $browse.AddClick({ Invoke-ADTUiBrowse -Kind $Kind -Command $Command -Control $control -Fields $Fields }.GetNewClosure())
+
+                $line = [Grid]::new()
+                $line.ColumnSpacing = 6
+                $textColumn = [ColumnDefinition]::new()
+                $textColumn.Width = [GridLength]::new(1, 'Star')
+                $buttonColumn = [ColumnDefinition]::new()
+                $buttonColumn.Width = [GridLength]::Auto
+                $line.ColumnDefinitions.Add($textColumn)
+                $line.ColumnDefinitions.Add($buttonColumn)
+                [Grid]::SetColumn($control, 0)
+                [Grid]::SetColumn($browse, 1)
+                $line.Children.Add($control)
+                $line.Children.Add($browse)
+                $panel.Children.Add($line)
+            } else {
+                $panel.Children.Add($control)
+            }
         }
-    } catch { Show-UiError $_.Exception.Message } finally { $dialog.Dispose() }
-})
-$form.Add_FormClosing({
-    param($sender,$eventArgs)
-    if ($script:Worker) { $eventArgs.Cancel=$true; [void][Windows.Forms.MessageBox]::Show('Une operation est en cours. Attendre son resultat avant de fermer.','PSADToolkit') }
-})
-try { [void]$form.ShowDialog() }
-finally { $timer.Dispose(); $passwordBox.Clear(); $script:Rows=@(); $form.Dispose() }
+    }
+
+    $Fields[$Key] = @{ Control = $control; Kind = $Kind; Required = [bool]$Label.EndsWith('*') }
+    return $panel
+}
+
+#--- Execution ----------------------------------------------------------------
+
+function Confirm-ADTUiWrite {
+    param($Spec, [hashtable]$Parameters)
+    $target = 'Domaine de la session'
+    if ($Parameters['Server']) { $target = [string]$Parameters['Server'] }
+    $summary = 'Operation : ' + [string]$Spec.Title + [Environment]::NewLine + 'Serveur : ' + $target + [Environment]::NewLine
+    foreach ($key in @('Identity', 'GivenName', 'Surname', 'Path', 'DefaultOU', 'Groups', 'DefaultGroups', 'AddGroup', 'RemoveGroup', 'DisabledOU', 'BackupPath')) {
+        if ($Parameters[$key]) { $summary += $key + ' : ' + ($Parameters[$key] -join '; ') + [Environment]::NewLine }
+    }
+    if ($Parameters['CreateDepartmentOUs']) { $summary += 'Sous-OU par departement : OUI' + [Environment]::NewLine }
+    $summary += [Environment]::NewLine + 'Appliquer ces modifications a Active Directory ?'
+    return (Show-ADTUiDialog -Title 'Confirmer les modifications' -Message $summary -AcceptText 'Appliquer' -CancelText 'Annuler')
+}
+
+function Update-ADTUiResultGrid {
+    $columns = @()
+    if ($script:Rows.Count) {
+        foreach ($property in $script:Rows[0].PSObject.Properties) {
+            if ($property.Name -eq 'Password' -and -not [bool]$showPasswords.IsChecked) { continue }
+            # Une liaison Avalonia vise un nom de propriete : ecarter tout nom exotique.
+            if ($property.Name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { continue }
+            $columns += @{ Header = $property.Name; Path = $property.Name }
+        }
+    }
+    if (-not $columns.Count) {
+        $gridHost.Content = $null
+        $exportButton.IsEnabled = $false
+        return
+    }
+    $grid = New-ADTUiDataGrid -Column $columns
+    $grid.ItemsSource = New-ADTUiDataSourceList -Column $columns -Row $script:Rows
+    $gridHost.Content = $grid
+    $exportButton.IsEnabled = ($script:Rows.Count -gt 0)
+}
+
+function Invoke-ADTUiCommand {
+    param([string]$Command, [hashtable]$Parameters)
+    $script:Operation = $Command
+    $script:Rows = @()
+    $gridHost.Content = $null
+    $detailsBox.Text = ''
+    $exportButton.IsEnabled = $false
+    $statusText.Text = 'Traitement en cours : ' + $Command
+    $progress.IsIndeterminate = $true
+    try {
+        $commandWarnings = $null
+        $commandErrors = $null
+        $script:Rows = @(& $Command @Parameters -WarningVariable commandWarnings -ErrorVariable commandErrors -ErrorAction Continue)
+        $messages = @()
+        foreach ($warning in @($commandWarnings)) { if ($warning) { $messages += 'AVERTISSEMENT : ' + $warning.Message } }
+        foreach ($failure in @($commandErrors)) { if ($failure) { $messages += 'ERREUR : ' + $failure.ToString() } }
+        $detailsBox.Text = $messages -join [Environment]::NewLine
+        Update-ADTUiResultGrid
+        $failed = @($script:Rows | Where-Object {
+                $_.Status -eq 'Echec' -or $_.Status -eq 'Partiel' -or ($_.PSObject.Properties['Ready'] -and -not $_.Ready)
+            }).Count
+        $statusText.Text = ('{0} resultat(s). Verifier les colonnes Status, Error et Messages.' -f $script:Rows.Count)
+        if ($failed -or @($commandErrors).Count) { $statusText.Text = 'Termine avec erreurs : consulter les resultats et les messages.' }
+        if ($script:Operation -eq 'Test-ADTPrerequisite' -and $script:Rows.Count -and $script:Rows[0].Ready) {
+            $serverBox.Text = [string]$script:Rows[0].Server
+            $statusText.Text = 'Connecte a ' + [string]$script:Rows[0].DomainName + ' via ' + [string]$script:Rows[0].Server
+        }
+    } catch {
+        $detailsBox.Text = $_.Exception.Message
+        $statusText.Text = 'Operation interrompue : consulter le detail.'
+    } finally {
+        $progress.IsIndeterminate = $false
+    }
+}
+
+function Invoke-ADTUiExecute {
+    param($Spec, [hashtable]$Fields, $Simulate)
+    try {
+        $parameters = Get-ADTUiConnection
+        foreach ($key in @($Fields.Keys)) {
+            $field = $Fields[$key]
+            $control = $field['Control']
+            $kind = [string]$field['Kind']
+            if ($kind -eq 'check') {
+                if ([bool]$control.IsChecked) { $parameters[$key] = $true }
+                continue
+            }
+            if ($kind -eq 'number') {
+                $parameters[$key] = [int]$control.Value
+                continue
+            }
+            if ($kind -eq 'delimiter') {
+                $parameters[$key] = [char][string]$control.SelectedItem
+                continue
+            }
+            $value = [string]$control.Text
+            if ($value) { $value = $value.Trim() }
+            if ($field['Required'] -and -not $value) { throw ('Champ obligatoire : ' + $key) }
+            if (-not $value) { continue }
+            if ($kind -eq 'list') {
+                $parameters[$key] = [string[]]@($value -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            } else {
+                $parameters[$key] = $value
+            }
+        }
+        if ([string]$Spec.Command -eq 'Import-ADTUserFromCsv') {
+            if (-not (Show-ADTUiImportPreview -Parameters $parameters)) { return }
+        }
+        if ($Spec.Write) {
+            $parameters['WhatIf'] = [bool]$Simulate.IsChecked
+            $parameters['Confirm'] = $false
+            if (-not [bool]$Simulate.IsChecked) {
+                if (-not (Confirm-ADTUiWrite -Spec $Spec -Parameters $parameters)) { return }
+            }
+        }
+        Invoke-ADTUiCommand -Command ([string]$Spec.Command) -Parameters $parameters
+    } catch {
+        Show-ADTUiError $_.Exception.Message
+    }
+}
+
+#--- Fenetre principale -------------------------------------------------------
+
+$mainXaml = @'
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PSADToolkit 3.0.0-test1 | Administration Active Directory"
+        Width="1200" Height="920">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+
+    <Border Grid.Row="0" Background="#162840" Padding="24,14">
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <TextBlock Text="PSADToolkit" Foreground="White" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+        <TextBlock Text="Comptes, acces et audits Active Directory" Foreground="#BED4ED" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" x:Name="connection_panel" Margin="16,14,16,0" Padding="16"
+            BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="6">
+      <StackPanel Spacing="10">
+        <Grid ColumnDefinitions="2*,Auto,2*,2*,Auto" ColumnSpacing="14">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="Controleur de domaine (FQDN, vide = automatique)" />
+            <TextBox x:Name="server_box" Watermark="dc01.contoso.local" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
+            <CheckBox x:Name="other_account" Content="Autre compte" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Spacing="4">
+            <TextBlock Text="Compte (DOMAINE\utilisateur ou UPN)" />
+            <TextBox x:Name="user_box" IsEnabled="False" />
+          </StackPanel>
+          <StackPanel Grid.Column="3" Spacing="4">
+            <TextBlock Text="Mot de passe" />
+            <TextBox x:Name="password_box" PasswordChar="*" IsEnabled="False" />
+          </StackPanel>
+          <StackPanel Grid.Column="4" VerticalAlignment="Bottom">
+            <Button x:Name="test_button" Content="Tester la connexion" Classes="accent"
+                    Width="190" HorizontalContentAlignment="Center" />
+          </StackPanel>
+        </Grid>
+        <TextBlock Text="Compte de la session Windows utilise par defaut. Les droits AD delegues sont necessaires : etre administrateur local ne les donne pas."
+                   Foreground="#4A5A6E" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <TabControl Grid.Row="2" x:Name="tabs" Margin="16,14,16,0" />
+
+    <Grid Grid.Row="3" Margin="16,16,16,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+      <TextBlock Grid.Column="0" Text="Resultats" FontWeight="Bold" VerticalAlignment="Center" />
+      <CheckBox Grid.Column="1" x:Name="show_passwords" Content="Afficher / exporter les mots de passe generes" />
+      <Button Grid.Column="2" x:Name="export_button" Content="Exporter les resultats CSV" IsEnabled="False" />
+    </Grid>
+
+    <Border Grid.Row="4" Margin="16,8,16,0" MinHeight="220"
+            BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="4">
+      <ContentControl x:Name="grid_host" />
+    </Border>
+
+    <TextBox Grid.Row="5" x:Name="details_box" Margin="16,10,16,0" Height="96"
+             AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap"
+             Watermark="Avertissements et erreurs de la derniere operation." />
+
+    <Grid Grid.Row="6" Margin="16,10,16,16" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+      <TextBlock Grid.Column="0" x:Name="status_text" VerticalAlignment="Center" TextWrapping="Wrap"
+                 Text="Pret. Commencer par tester la connexion." />
+      <ProgressBar Grid.Column="1" x:Name="progress" Width="220" VerticalAlignment="Center" />
+    </Grid>
+  </Grid>
+</Window>
+'@
+
+$window = [AvaloniaRuntimeXamlLoader]::Parse($mainXaml, $null)
+$connectionPanel = $window.FindControl('connection_panel')
+$serverBox = $window.FindControl('server_box')
+$otherAccount = $window.FindControl('other_account')
+$userBox = $window.FindControl('user_box')
+$passwordBox = $window.FindControl('password_box')
+$testButton = $window.FindControl('test_button')
+$tabs = $window.FindControl('tabs')
+$showPasswords = $window.FindControl('show_passwords')
+$exportButton = $window.FindControl('export_button')
+$gridHost = $window.FindControl('grid_host')
+$detailsBox = $window.FindControl('details_box')
+$statusText = $window.FindControl('status_text')
+$progress = $window.FindControl('progress')
+
+$otherAccount.AddIsCheckedChanged({
+        $enabled = [bool]$otherAccount.IsChecked
+        $userBox.IsEnabled = $enabled
+        $passwordBox.IsEnabled = $enabled
+        if (-not $enabled) { $passwordBox.Text = '' }
+    })
+
+$testButton.AddClick([EventCallback]@{
+        DisabledControlsWhileProcessing = @($testButton, $tabs)
+        ScriptBlock                     = {
+            try { Invoke-ADTUiCommand -Command 'Test-ADTPrerequisite' -Parameters (Get-ADTUiConnection) }
+            catch { Show-ADTUiError $_.Exception.Message }
+        }
+    })
+
+$showPasswords.AddIsCheckedChanged({ Update-ADTUiResultGrid })
+
+$exportButton.AddClick({
+        try {
+            $options = [FilePickerSaveOptions]::new()
+            $options.Title = 'Exporter les resultats'
+            $options.DefaultExtension = 'csv'
+            $options.SuggestedFileName = 'psadtoolkit-resultats.csv'
+            $path = Get-ADTUiStoragePath ($window.StorageProvider.SaveFilePickerAsync($options).WaitForCompleted())
+            if (-not $path) { return }
+            $data = $script:Rows
+            if (-not [bool]$showPasswords.IsChecked) { $data = @($data | Select-Object * -ExcludeProperty Password) }
+            $data | Export-Csv -Path $path -Delimiter ';' -Encoding UTF8 -NoTypeInformation -ErrorAction Stop
+            $statusText.Text = 'Export enregistre : ' + $path
+        } catch {
+            Show-ADTUiError $_.Exception.Message
+        }
+    })
+
+#--- Onglets ------------------------------------------------------------------
+
+foreach ($spec in $specs) {
+    $fields = @{}
+
+    $content = [Grid]::new()
+    $content.Margin = [Thickness]::new(16)
+    $content.ColumnSpacing = 24
+    $content.RowSpacing = 12
+    foreach ($index in 0, 1) {
+        $column = [ColumnDefinition]::new()
+        $column.Width = [GridLength]::new(1, 'Star')
+        $content.ColumnDefinitions.Add($column)
+    }
+    $rowCount = [int][Math]::Ceiling(@($spec.Fields).Count / 2) + 1
+    for ($index = 0; $index -lt $rowCount; $index++) {
+        $row = [RowDefinition]::new()
+        $row.Height = [GridLength]::Auto
+        $content.RowDefinitions.Add($row)
+    }
+
+    $position = 0
+    foreach ($field in $spec.Fields) {
+        $cell = New-ADTUiField -Key ([string]$field[0]) -Label ([string]$field[1]) -Kind ([string]$field[2]) -Command ([string]$spec.Command) -Fields $fields
+        [Grid]::SetRow($cell, [int][Math]::Floor($position / 2))
+        [Grid]::SetColumn($cell, $position % 2)
+        $content.Children.Add($cell)
+        $position++
+    }
+
+    $simulate = [CheckBox]::new()
+    $simulate.Content = 'Simulation : verifier sans modifier Active Directory'
+    $simulate.IsChecked = $true
+    $simulate.VerticalAlignment = 'Center'
+    $simulate.IsVisible = [bool]$spec.Write
+
+    $note = [TextBlock]::new()
+    $note.Text = 'Lecture du domaine. Le rapport HTML et les exports creent des fichiers locaux.'
+    $note.VerticalAlignment = 'Center'
+    $note.TextWrapping = 'Wrap'
+    $note.IsVisible = -not [bool]$spec.Write
+
+    $run = [Button]::new()
+    $run.Content = 'Executer'
+    if ([string]$spec.Command -eq 'Import-ADTUserFromCsv') { $run.Content = 'Apercu / Importer' }
+    $run.Width = 200
+    $run.HorizontalAlignment = 'Right'
+    $run.HorizontalContentAlignment = 'Center'
+    $run.Classes.Add('accent')
+    $run.AddClick([EventCallback]@{
+            # Le traitement se deroule dans le runspace principal : la fenetre reste
+            # reactive, mais l onglet et la connexion sont neutralises pour interdire
+            # une seconde operation simultanee.
+            DisabledControlsWhileProcessing = @($run, $tabs, $connectionPanel)
+            ScriptBlock                     = { Invoke-ADTUiExecute -Spec $spec -Fields $fields -Simulate $simulate }.GetNewClosure()
+        })
+
+    $footerLeft = [StackPanel]::new()
+    $footerLeft.Orientation = 'Horizontal'
+    $footerLeft.Spacing = 8
+    $footerLeft.VerticalAlignment = 'Center'
+    $footerLeft.Children.Add($simulate)
+    $footerLeft.Children.Add($note)
+
+    $footer = [Grid]::new()
+    $footer.Margin = [Thickness]::new(0, 12, 0, 0)
+    $footer.ColumnSpacing = 16
+    $leftColumn = [ColumnDefinition]::new()
+    $leftColumn.Width = [GridLength]::new(1, 'Star')
+    $rightColumn = [ColumnDefinition]::new()
+    $rightColumn.Width = [GridLength]::Auto
+    $footer.ColumnDefinitions.Add($leftColumn)
+    $footer.ColumnDefinitions.Add($rightColumn)
+    [Grid]::SetColumn($footerLeft, 0)
+    [Grid]::SetColumn($run, 1)
+    $footer.Children.Add($footerLeft)
+    $footer.Children.Add($run)
+    [Grid]::SetRow($footer, $rowCount - 1)
+    [Grid]::SetColumn($footer, 0)
+    [Grid]::SetColumnSpan($footer, 2)
+    $content.Children.Add($footer)
+
+    $tab = [TabItem]::new()
+    $tab.Header = [string]$spec.Title
+    $tab.Content = $content
+    $tabs.Items.Add($tab) | Out-Null
+}
+
+#--- Boucle d evenements ------------------------------------------------------
+
+try {
+    $window.Show()
+    # Les callbacks sont traites ici. Fermer la fenetre pendant une operation ne
+    # l interrompt pas : elle se termine avant que le script ne rende la main.
+    $window.WaitForClosed()
+} finally {
+    $script:Rows = @()
+    $script:Operation = ''
+}

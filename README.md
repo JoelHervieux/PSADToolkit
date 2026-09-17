@@ -1,16 +1,26 @@
-﻿# PSADToolkit 2.1.4-test1
+﻿# PSADToolkit 3.0.0-test1
 
-Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. Code ciblant **Windows Server 2008 SP2 à Windows Server 2025** avec **Windows PowerShell 2.0 à 5.1**. Accès LDAP par ADSI / .NET Framework : **RSAT et AD Web Services ne sont plus nécessaires**.
+Administration Active Directory avec interface graphique en français, import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `2.1.4-test1` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.0.0-test1` — canal de test.** Le suffixe `-test1` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. Le passage en 3.0.0 marque le remplacement de l'interface Windows Forms par GliderUI et l'abandon de Windows PowerShell comme moteur de l'interface. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+
+> GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
 ## Démarrage
 
-1. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
-2. Double-cliquer sur **Lancer.cmd**. Il ouvre Windows PowerShell en mode STA, nécessaire à l'interface.
-3. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
-4. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
-5. Choisir un onglet, remplir les champs, puis cliquer sur **Exécuter**. Pour les modifications AD, la **simulation est cochée par défaut**. Décocher seulement après vérification : une confirmation récapitule la cible et l'action.
+1. Installer **PowerShell 7.4 ou supérieur**, puis le module GliderUI et son serveur :
+
+   ```powershell
+   Install-PSResource -Name GliderUI
+   Install-GLIServer
+   ```
+
+   `Install-GLIServer` télécharge l'exécutable Avalonia correspondant à la plateforme. Le relancer après chaque mise à jour du module.
+2. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
+3. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
+4. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
+5. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
+6. Choisir un onglet, remplir les champs, puis cliquer sur **Exécuter**. Pour les modifications AD, la **simulation est cochée par défaut**. Décocher seulement après vérification : une confirmation récapitule la cible et l'action.
 
 Les résultats s'affichent dans le tableau. Agrandir la fenêtre ou défiler horizontalement pour lire toutes les colonnes. Vérifier **Status**, **Error** et **Messages**. `Partiel` signifie que certaines modifications ont déjà été appliquées : examiner l'état du compte avant de relancer.
 
@@ -18,20 +28,20 @@ L'interface reste réactive pendant les opérations. Une seule opération est au
 
 ## Compatibilité et prérequis
 
-| Système où lancer l'outil | Environnement visé | Interface |
+| Rôle | Système | Prérequis |
 |---|---|---|
-| Server 2008 **SP2**, sans R2 | Installer Windows Management Framework 2.0 / Windows PowerShell 2.0 et disposer de .NET Framework 2.0 SP2 ou du .NET 3.5 SP1 correspondant | Installation complète avec bureau et Windows Forms |
-| Server 2008 R2 / R2 SP1 | Windows PowerShell 2.0 ou version Windows PowerShell compatible installée | Installation avec bureau et Windows Forms |
-| Server 2012 | Windows PowerShell 3.0, ou version compatible installée | Installation avec interface graphique |
-| Server 2012 R2 | Windows PowerShell 4.0 ou 5.1 | Installation avec interface graphique |
-| Server 2016, 2019, 2022, 2025 | Windows PowerShell 5.1 et .NET Framework du système | Desktop Experience |
-| Server Core | Fonctions en ligne de commande si les composants PowerShell / .NET / DirectoryServices sont disponibles | Utiliser l'interface depuis un poste Windows d'administration |
+| Poste qui affiche l'interface | Windows 10 / 11, ou Windows Server 2016 à 2025 avec bureau | PowerShell 7.4+, module GliderUI et `Install-GLIServer` |
+| Contrôleurs de domaine administrés | Windows Server 2008 SP2 à 2025 | Aucun composant à installer : accès LDAP / ADSI depuis le poste d'administration |
+| Utilisation en ligne de commande | Tout hôte Windows joignant le domaine | Windows PowerShell 2.0 à 5.1, ou PowerShell 7 ; `.NET` et `System.DirectoryServices` du système |
+| Server Core | Windows Server sans bureau | Ligne de commande seulement : lancer l'interface depuis un poste d'administration |
 
-**Server 2008 avec seulement PowerShell 1.0 n'est pas pris en charge.** Installer les prérequis compatibles avec cette ancienne version ou lancer l'outil depuis un poste Windows d'administration qui peut joindre le contrôleur de domaine 2008. Ne pas installer PowerShell 2.0 sur un serveur récent : utiliser son Windows PowerShell 5.1.
+**L'interface ne s'exécute plus sous Windows PowerShell.** `powershell.exe` ne dépasse pas la version 5.1 ; GliderUI exige 7.4. Lancer l'interface avec `pwsh.exe`, ce que fait `Lancer.cmd`. Les serveurs qui ne peuvent pas recevoir PowerShell 7, dont Server 2008 SP2, restent administrables : installer PSADToolkit sur un poste d'administration moderne, qui joint le contrôleur de domaine en LDAP.
 
-**PowerShell 7 (`pwsh.exe`) n'est pas le moteur d'exploitation de cet outil.** Utiliser `powershell.exe`. PowerShell 7 est employé uniquement pour certains tests de développement.
+**Le backend reste Windows.** GliderUI est multiplateforme, mais `System.DirectoryServices` ne l'est pas : l'interface refuse de démarrer ailleurs que sous Windows.
 
-La compatibilité ci-dessus est une **cible technique**, pas une certification obtenue sur chaque système. Le contrôle de syntaxe et les tests avec annuaire simulé ont été exécutés ; l'interface Windows et les écritures sur un véritable domaine 2008–2025 doivent encore être validées dans un laboratoire Windows. Le comportement dépend aussi des stratégies d'authentification, des délégations et des composants installés. Les versions futures de Windows Server ne sont pas garanties.
+**Les fonctions du module restent compatibles Windows PowerShell 2.0.** Le manifeste déclare toujours `PowerShellVersion = '2.0'` et `Tests\Test-Compatibility.ps1` continue de le vérifier pour `Private`, `Public` et le standalone. Seule l'interface a changé de moteur.
+
+La compatibilité ci-dessus est une **cible technique**, pas une certification obtenue sur chaque système. Le contrôle de syntaxe et les tests avec annuaire simulé ont été exécutés ; l'interface GliderUI n'a encore été exécutée sur aucune machine, et les écritures sur un véritable domaine 2008–2025 doivent être validées dans un laboratoire Windows. Le comportement dépend aussi des stratégies d'authentification, des délégations et des composants installés. Les versions futures de Windows Server ne sont pas garanties.
 
 ## Connexion et dépannage
 
@@ -75,7 +85,7 @@ Le rapport de mots de passe facultatif est **en clair** : choisir un emplacement
 
 ## Ligne de commande
 
-Depuis Windows PowerShell, dans le dossier extrait :
+Depuis Windows PowerShell ou PowerShell 7, dans le dossier extrait :
 
 ```powershell
 Import-Module .\PSADToolkit.psd1 -Force
@@ -106,7 +116,7 @@ Copier `dist\PSADToolkit-Standalone.ps1`, puis le charger avec un point suivi d'
 Test-ADTPrerequisite
 ```
 
-Le standalone fournit les fonctions en ligne de commande. **L'interface exige le dossier complet** et se lance avec `Lancer.cmd`. Pour régénérer le standalone après modification des sources, exécuter `Build.ps1` sur un poste de développement avec PowerShell 5.1 ou 7.
+Le standalone fournit les fonctions en ligne de commande, sans rien installer, y compris sous Windows PowerShell 2.0. **L'interface, elle, exige le dossier complet**, PowerShell 7.4+ et GliderUI ; elle se lance avec `Lancer.cmd`. Pour régénérer le standalone après modification des sources, exécuter `Build.ps1` sur un poste de développement avec PowerShell 5.1 ou 7.
 
 ## Sauvegardes de départ et limites
 

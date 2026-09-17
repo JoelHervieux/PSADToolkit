@@ -34,7 +34,7 @@ function Test-ADTVersionIn { param([string]$RelativePath,[string]$Attendu,[strin
 }
 
 Test-ADTVersionIn 'dist/PSADToolkit-Standalone.ps1' ('PSADToolkit '+$version+' - version autonome') 'en-tete du standalone'
-Test-ADTVersionIn 'Start-PSADToolkit.ps1' ("`$form.Text='PSADToolkit "+$version+" |") 'titre de la fenetre'
+Test-ADTVersionIn 'Start-PSADToolkit.ps1' ('PSADToolkit '+$version+' | Administration Active Directory') 'titre de la fenetre'
 
 $readme=Read-ADTFileText 'README.md'
 $titre=($readme -split "`r?`n")[0]

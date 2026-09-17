@@ -11,7 +11,9 @@ foreach ($file in $all) {
     if ($parseErrors) { throw ($file.Name+': '+($parseErrors.Message -join '; ')) }
 }
 $targets=@(Get-ChildItem (Join-Path $root 'Private') -Filter *.ps1)+@(Get-ChildItem (Join-Path $root 'Public') -Filter *.ps1)
-$targets += Get-Item (Join-Path $root 'Start-PSADToolkit.ps1'),(Join-Path $root 'PSADToolkit.psm1'),(Join-Path $root 'PSADToolkit.psd1'),(Join-Path $root 'dist/PSADToolkit-Standalone.ps1')
+# Start-PSADToolkit.ps1 n est plus une cible : l interface GliderUI exige PowerShell 7.4.
+# Le module, lui, reste utilisable en ligne de commande sur Windows PowerShell 2.0 a 5.1.
+$targets += Get-Item (Join-Path $root 'PSADToolkit.psm1'),(Join-Path $root 'PSADToolkit.psd1'),(Join-Path $root 'dist/PSADToolkit-Standalone.ps1')
 $settings=@{IncludeRules=@('PSUseCompatibleSyntax');Rules=@{PSUseCompatibleSyntax=@{Enable=$true;TargetVersions=@('2.0','5.1')}}}
 foreach ($file in $targets) {
     $issues=@(Invoke-ScriptAnalyzer -Path $file.FullName -Settings $settings)
