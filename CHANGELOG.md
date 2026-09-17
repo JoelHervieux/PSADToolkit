@@ -1,5 +1,35 @@
 ﻿# Changements
 
+## 3.1.0-test2 - 2026-09-17
+
+Premier lancement reel de l interface sur un poste Windows : elle s arretait sur
+"Impossible de trouver le type [AvaloniaRuntimeXamlLoader]", sans indiquer la
+cause ni la marche a suivre. Le defaut existait depuis 3.0.0-test1 et n avait
+jamais pu apparaitre, faute d execution.
+
+- L API employee est conforme a la documentation de GliderUI : `using namespace
+  GliderUI.Avalonia.Markup.Xaml` puis `[AvaloniaRuntimeXamlLoader]::Parse`. Le
+  type manque donc cote installation. GliderUI expose les classes Avalonia par un
+  generateur de source livre avec son serveur : un module a jour dont le serveur
+  ne l est pas se charge sans erreur, mais n expose aucune de ces classes.
+  `Install-GLIServer` doit etre relance apres chaque mise a jour du module.
+- Verification au demarrage : les 25 types dont l interface a besoin sont
+  resolus par leur nom complet juste apres `Import-Module GliderUI`. S il en
+  manque, le message indique la version chargee, les versions installees, les
+  types introuvables et les deux commandes a executer, au lieu d echouer sur le
+  premier type rencontre. Les types de confort - `ContextMenu`, `MenuItem`,
+  `Separator` - restent hors de ce controle : la console s en passe.
+- Ajout de `Tests\Test-GliderUI.ps1`, diagnostic a lancer quand l interface
+  refuse de demarrer. Il ne modifie rien et rapporte la version de PowerShell,
+  les versions de GliderUI installees et chargee, la presence du serveur, la
+  resolution de chaque type requis et facultatif, et les assemblys charges.
+- `Tests\ConsoleInterface.Tests.ps1` maintient la liste verifiee en accord avec
+  l interface : tout type GliderUI construit ou obtenu par conversion doit y
+  figurer, aucun type inutilise ne doit y rester, et les types de confort
+  doivent en rester absents.
+- README : section de depannage dediee a ce message.
+
+
 ## 3.1.0-test1 - 2026-09-17
 
 Console d administration Active Directory. Aucune fonction, aucun parametre et aucun onglet existant n est retire ni renomme : la 3.1.0 est additive.

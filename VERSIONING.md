@@ -8,7 +8,7 @@ Ce document définit la numérotation de PSADToolkit, l'endroit où chaque versi
 MAJEUR.MINEUR.CORRECTIF[-CANAL]
 ```
 
-Exemples : `3.1.0-test1`, `3.1.0-rc1`, `3.1.0`.
+Exemples : `3.1.0-test2`, `3.1.0-rc1`, `3.1.0`.
 
 | Élément | Quand il change |
 |---|---|
@@ -29,7 +29,7 @@ Exemples : `3.1.0-test1`, `3.1.0-rc1`, `3.1.0`.
 
 Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShellGet n'accepte dans un suffixe de préversion que des caractères alphanumériques et le trait d'union.
 
-**État actuel : `3.1.0-test1`.** Le passage à 3.1.0 applique la règle MINEUR ci-dessus : la console d'administration ajoute dix-neuf fonctions publiques et un onglet, sans retirer ni renommer quoi que ce soit. Les appels écrits pour 3.0.0 continuent de fonctionner à l'identique, et le manifeste déclare toujours `PowerShellVersion = '2.0'`. Aucune version de ce dépôt n'a encore passé la recette Windows. Tant que le canal reste `test`, la compatibilité annoncée dans `README.md` est une cible technique, pas un résultat mesuré.
+**État actuel : `3.1.0-test2`.** Le passage à 3.1.0 applique la règle MINEUR ci-dessus : la console d'administration ajoute dix-neuf fonctions publiques et un onglet, sans retirer ni renommer quoi que ce soit. Les appels écrits pour 3.0.0 continuent de fonctionner à l'identique, et le manifeste déclare toujours `PowerShellVersion = '2.0'`. Aucune version de ce dépôt n'a encore passé la recette Windows. Tant que le canal reste `test`, la compatibilité annoncée dans `README.md` est une cible technique, pas un résultat mesuré.
 
 ## Où la version est inscrite
 
@@ -37,11 +37,11 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 |---|---|---|
 | `PSADToolkit.psd1` → `ModuleVersion` | Numéro seul : `3.0.0`. **Source de vérité.** | À la main. |
 | `PSADToolkit.psd1` → `PrivateData.PSData.Prerelease` | Canal seul : `test1`. Chaîne vide pour une version stable. | À la main. |
-| `dist\PSADToolkit-Standalone.ps1` (en-tête) | Version complète : `3.1.0-test1`. | `Build.ps1`, jamais à la main. |
+| `dist\PSADToolkit-Standalone.ps1` (en-tête) | Version complète : `3.1.0-test2`. | `Build.ps1`, jamais à la main. |
 | `Start-PSADToolkit.ps1` (attribut `Title` du XAML) | Version complète. L'opérateur doit voir à l'écran qu'il utilise une version de test. | À la main. |
 | `README.md` (titre de niveau 1 et encadré d'état) | Version complète. | À la main. |
 | `CHANGELOG.md` | Une section `## <version complète> - AAAA-MM-JJ` par version, ordre décroissant. | À la main. |
-| Étiquette git | `v<version complète>`, par exemple `v3.1.0-test1`. | `git tag`. |
+| Étiquette git | `v<version complète>`, par exemple `v3.1.0-test2`. | `git tag`. |
 
 `ModuleVersion` reste purement numérique parce que Windows PowerShell 2.0 refuse tout suffixe dans un manifeste. La version complète est reconstituée par concaténation, comme le fait `Build.ps1`.
 
@@ -64,7 +64,7 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 
    `Test-Compatibility.ps1` exige PSScriptAnalyzer. Les contrôles de compatibilité PowerShell 2.0 qui n'en dépendent pas — API interdites, opérateurs apparus en 3.0 — sont aussi couverts par `Tests\Console.Tests.ps1`, qui s'exécute partout.
 
-6. Commiter, puis étiqueter : `git tag -a v3.1.0-test1 -m "PSADToolkit 3.1.0-test1"`.
+6. Commiter, puis étiqueter : `git tag -a v3.1.0-test2 -m "PSADToolkit 3.1.0-test2"`.
 7. Pousser la branche et l'étiquette : `git push -u origin <branche> --follow-tags`.
 
 ## Passage en version stable

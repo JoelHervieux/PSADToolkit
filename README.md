@@ -1,8 +1,8 @@
-﻿# PSADToolkit 3.1.0-test1
+﻿# PSADToolkit 3.1.0-test2
 
 Administration Active Directory avec interface graphique en français : **console d'arborescence** à la manière d'« Utilisateurs et ordinateurs Active Directory », import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.1.0-test1` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.1.0-test2` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
@@ -63,6 +63,16 @@ La compatibilité ci-dessus est une **cible technique**, pas une certification o
 - Le test de connexion confirme la lecture du domaine, **pas les droits de modification**. Les politiques de mot de passe peuvent refuser une valeur générée.
 - Si Windows bloque le fichier téléchargé, ouvrir les propriétés du ZIP et choisir **Débloquer**, si proposé, avant de l'extraire à nouveau. Le lanceur utilise `RemoteSigned` pour son processus uniquement. Une stratégie de groupe ou une obligation de signature peut toujours s'imposer ; faire signer les scripts si nécessaire.
 - Une session élevée n'est normalement pas nécessaire pour les opérations AD déléguées. Les modifications d'un partage ou de ses ACL utilisent l'identité de la **session Windows courante**, même si un autre compte est fourni pour LDAP.
+- **`Impossible de trouver le type [AvaloniaRuntimeXamlLoader]`, ou tout autre type `GliderUI...` introuvable.** Le module GliderUI se charge, mais les classes Avalonia qu'il expose — produites par un générateur livré avec le serveur — ne sont pas disponibles. Le serveur est absent, ou il date d'une version antérieure du module : **`Install-GLIServer` doit être relancé après chaque mise à jour de GliderUI**.
+
+  ```powershell
+  Update-PSResource -Name GliderUI
+  Install-GLIServer -UninstallOldVersions
+  ```
+
+  Fermer ensuite toutes les fenêtres PowerShell avant de relancer : un assembly déjà chargé dans une session ne peut pas y être remplacé. Pour un rapport détaillé — versions installées, présence du serveur, résolution de chaque type, assemblys chargés — lancer `pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` et joindre sa sortie à tout signalement.
+
+  L'interface vérifie ces types au démarrage et rapporte précisément ceux qui manquent, au lieu d'échouer sur le premier rencontré.
 - Journal par défaut : `%LOCALAPPDATA%\PSADToolkit\PSADToolkit.log`. Paramètre `-LogPath` disponible en ligne de commande. Les erreurs de journalisation sont affichées comme avertissements. Aucun mot de passe n'est volontairement écrit dans ce journal.
 
 ## La console Active Directory
@@ -224,6 +234,8 @@ Invoke-Pester -Path .\Tests -Output Detailed
 .\Tests\Test-VersionConsistency.ps1
 .\Tests\Test-ParameterShadowing.ps1
 ```
+
+`Tests\Test-GliderUI.ps1` est un diagnostic, pas un test : il ne fait partie d'aucune suite et n'écrit rien. Il sert quand l'interface refuse de démarrer.
 
 `Test-VersionConsistency.ps1` échoue si un fichier annonce une version différente de celle du manifeste. Le lancer avant toute étiquette git, comme indiqué dans `VERSIONING.md`.
 

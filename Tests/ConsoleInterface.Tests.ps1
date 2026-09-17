@@ -150,3 +150,73 @@ Describe 'Formats affiches par l interface' {
         $source | Should -Not -BeLike '*$values[$path] = [string]$item.$path*'
     }
 }
+
+Describe 'Verification des types GliderUI au demarrage' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        $entry = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $root 'Start-PSADToolkit.ps1'), [ref]$null, [ref]$null)
+
+        # La liste verifiee au demarrage, extraite du script lui-meme.
+        $assignment = @($entry.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left.Extent.Text -eq '$requiredTypes'
+                }, $true))
+        $script:PreflightTypes = @(& ([scriptblock]::Create($assignment[0].Right.Extent.Text)))
+
+        # Les types reellement employes par l interface, sous leur nom court :
+        # construction par ::new(), appel statique, et conversion - EventCallback et
+        # DataSource ne sont jamais construits, ils sont obtenus par conversion.
+        $script:UsedShortNames = New-Object System.Collections.ArrayList
+        $builtin = @('PSCustomObject', 'bool', 'char', 'double', 'hashtable', 'int',
+            'ref', 'scriptblock', 'string', 'switch', 'void', 'long', 'byte', 'datetime', 'type')
+        $files = @(Get-Item (Join-Path $root 'Start-PSADToolkit.ps1')) +
+        @(Get-ChildItem -Path (Join-Path $root 'UI') -Filter '*.ps1')
+        foreach ($file in $files) {
+            $text = [IO.File]::ReadAllText($file.FullName)
+            foreach ($pattern in @('\[([A-Za-z][A-Za-z0-9]*)\]::(?:new|Parse)\(', '\[([A-Za-z][A-Za-z0-9]*)\]@\{', '\[([A-Za-z][A-Za-z0-9]*)\]\$')) {
+                foreach ($match in [regex]::Matches($text, $pattern)) {
+                    $name = $match.Groups[1].Value
+                    if ($builtin -contains $name) { continue }
+                    if (-not $script:UsedShortNames.Contains($name)) { [void]$script:UsedShortNames.Add($name) }
+                }
+            }
+        }
+    }
+
+    It 'Verifie le chargeur XAML avant de construire la fenetre' {
+        # C est le type sur lequel l interface echouait au premier lancement reel,
+        # avec un message qui ne disait pas quoi faire.
+        $script:PreflightTypes | Should -Contain 'GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader'
+    }
+
+    It 'Couvre tous les types GliderUI que l interface construit' {
+        # Les menus contextuels et le separateur sont volontairement absents : la
+        # console les construit dans un try/catch et se rabat sur ses boutons.
+        $optional = @('ContextMenu', 'MenuItem', 'Separator')
+        foreach ($name in $script:UsedShortNames) {
+            if ($optional -contains $name) { continue }
+            $covered = $false
+            foreach ($full in $script:PreflightTypes) {
+                if ($full -eq $name -or $full.EndsWith('.' + $name)) { $covered = $true }
+            }
+            $covered | Should -BeTrue -Because ($name + ' est construit par l interface mais absent de la verification de demarrage')
+        }
+    }
+
+    It 'Ne verifie que des types reellement utilises' {
+        foreach ($full in $script:PreflightTypes) {
+            $short = ($full -split '\.')[-1]
+            $script:UsedShortNames | Should -Contain $short -Because ($full + ' est verifie au demarrage mais jamais utilise')
+        }
+    }
+
+    It 'Laisse les types de confort hors de la verification bloquante' {
+        foreach ($name in @('ContextMenu', 'MenuItem', 'Separator')) {
+            foreach ($full in $script:PreflightTypes) {
+                $full.EndsWith('.' + $name) | Should -BeFalse -Because ($name + ' doit rester facultatif')
+            }
+        }
+    }
+}

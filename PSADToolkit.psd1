@@ -58,7 +58,7 @@
     # Chaine vide = version stable, validee par la recette Windows de VALIDATION.md.
     PrivateData       = @{
         PSData = @{
-            Prerelease = 'test1'
+            Prerelease = 'test2'
             ProjectUri = 'https://github.com/JoelHervieux/PSADToolkit'
             LicenseUri = 'https://github.com/JoelHervieux/PSADToolkit/blob/main/LICENSE'
         }

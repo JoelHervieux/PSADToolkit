@@ -33,6 +33,76 @@ if (-not (Get-Module -ListAvailable -Name GliderUI)) {
     throw "Module GliderUI introuvable. Installer :`n    Install-PSResource -Name GliderUI`n    Install-GLIServer"
 }
 Import-Module GliderUI -ErrorAction Stop
+
+# Verification des types GliderUI avant de construire quoi que ce soit.
+#
+# GliderUI expose les classes Avalonia en prefixant leur espace de noms par
+# GliderUI, et ces classes sont produites par un generateur de source livre avec
+# le serveur. Si le module est installe mais que le serveur ne l est pas, ou si la
+# version installee est plus ancienne que celle attendue, les types manquent et la
+# premiere utilisation echoue sur un brutal "Impossible de trouver le type
+# [AvaloniaRuntimeXamlLoader]", sans dire quoi faire. On les verifie donc tout de
+# suite, par leur nom complet, ce qui ne depend pas des directives using namespace.
+$requiredTypes = @(
+    'GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader',
+    'GliderUI.Avalonia.Controls.Window',
+    'GliderUI.Avalonia.Controls.Button',
+    'GliderUI.Avalonia.Controls.TextBlock',
+    'GliderUI.Avalonia.Controls.TextBox',
+    'GliderUI.Avalonia.Controls.CheckBox',
+    'GliderUI.Avalonia.Controls.ComboBox',
+    'GliderUI.Avalonia.Controls.NumericUpDown',
+    'GliderUI.Avalonia.Controls.StackPanel',
+    'GliderUI.Avalonia.Controls.Grid',
+    'GliderUI.Avalonia.Controls.TreeView',
+    'GliderUI.Avalonia.Controls.TreeViewItem',
+    'GliderUI.Avalonia.Controls.TabControl',
+    'GliderUI.Avalonia.Controls.TabItem',
+    'GliderUI.Avalonia.Controls.ScrollViewer',
+    'GliderUI.Avalonia.Controls.ColumnDefinition',
+    'GliderUI.Avalonia.Controls.RowDefinition',
+    'GliderUI.Avalonia.Controls.GridLength',
+    'GliderUI.Avalonia.Thickness',
+    'GliderUI.Avalonia.Platform.Storage.FolderPickerOpenOptions',
+    'GliderUI.Avalonia.Platform.Storage.FilePickerOpenOptions',
+    'GliderUI.Avalonia.Platform.Storage.FilePickerSaveOptions',
+    'GliderUI.EventCallback',
+    'GliderUI.DataSource',
+    'GliderUI.DataSourcePropertyComparer'
+)
+$missingTypes = @()
+foreach ($requiredType in $requiredTypes) {
+    if (-not ($requiredType -as [type])) { $missingTypes += $requiredType }
+}
+if ($missingTypes.Count) {
+    $installed = @(Get-Module -ListAvailable -Name GliderUI | Sort-Object Version -Descending)
+    $versions = 'aucune'
+    if ($installed.Count) { $versions = ($installed | ForEach-Object { [string]$_.Version }) -join ', ' }
+    $loaded = 'aucune'
+    $current = Get-Module -Name GliderUI
+    if ($current) { $loaded = [string]$current.Version }
+
+    $report = New-Object System.Text.StringBuilder
+    [void]$report.AppendLine('Le module GliderUI est charge mais il n expose pas les types dont l interface a besoin.')
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine('Version chargee    : ' + $loaded)
+    [void]$report.AppendLine('Versions installees: ' + $versions)
+    [void]$report.AppendLine('PowerShell         : ' + [string]$PSVersionTable.PSVersion)
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine(('Types introuvables ({0} sur {1}) :' -f $missingTypes.Count, $requiredTypes.Count))
+    foreach ($missingType in ($missingTypes | Select-Object -First 8)) { [void]$report.AppendLine('  - ' + $missingType) }
+    if ($missingTypes.Count -gt 8) { [void]$report.AppendLine(('  ... et {0} autre(s).' -f ($missingTypes.Count - 8))) }
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine('Cause la plus frequente : le serveur GliderUI n est pas installe, ou il date d une')
+    [void]$report.AppendLine('version anterieure du module. Le serveur doit etre reinstalle a CHAQUE mise a jour.')
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine('    Update-PSResource -Name GliderUI')
+    [void]$report.AppendLine('    Install-GLIServer -UninstallOldVersions')
+    [void]$report.AppendLine('')
+    [void]$report.AppendLine('Puis relancer. Pour un rapport detaille : .\Tests\Test-GliderUI.ps1')
+    throw $report.ToString()
+}
+
 Import-Module (Join-Path $script:Root 'PSADToolkit.psd1') -Force -ErrorAction Stop
 # Helpers prives du module : l apercu d import doit calculer l OU cible et les groupes
 # exactement comme l import lui-meme, la console reutilise le backend LDAP, et les
@@ -732,7 +802,7 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.1.0-test1 | Administration Active Directory"
+        Title="PSADToolkit 3.1.0-test2 | Administration Active Directory"
         Width="1360" Height="1000">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 

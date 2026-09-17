@@ -1,6 +1,6 @@
 ﻿# Validation
 
-> **État au 17 septembre 2026 : version du dépôt `3.1.0-test1`.** Aucune version de ce dépôt n'a passé la recette Windows. Ce qui est décrit ci-dessous a été **réellement exécuté**, sous Linux, avec PowerShell 7.4.6 et Pester 5.7.1 ; ce qui ne l'a pas été est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
+> **État au 17 septembre 2026 : version du dépôt `3.1.0-test2`.** Aucune version de ce dépôt n'a passé la recette Windows. Ce qui est décrit ci-dessous a été **réellement exécuté**, sous Linux, avec PowerShell 7.4.6 et Pester 5.7.1 ; ce qui ne l'a pas été est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
 
 ## Ce qui a été exécuté pour 3.1.0-test1
 
@@ -8,16 +8,16 @@ Environnement : Linux, PowerShell 7.4.6, Pester 5.7.1. **PSScriptAnalyzer n'éta
 
 | Vérification | Résultat |
 |---|---|
-| Analyse syntaxique native des 59 fichiers PowerShell du dépôt | Réussie, aucune erreur |
+| Analyse syntaxique native des 60 fichiers PowerShell du dépôt | Réussie, aucune erreur |
 | Import du module et export des 27 fonctions publiques | Réussi |
-| `Invoke-Pester -Path .\Tests` | **129 réussis, 0 échec** |
-| `Tests\Test-ParameterShadowing.ps1` | PASS, 57 fichiers analysés (le standalone est exclu) |
+| `Invoke-Pester -Path .\Tests` | **133 réussis, 0 échec** |
+| `Tests\Test-ParameterShadowing.ps1` | PASS, 58 fichiers analysés (le standalone est exclu) |
 | `Tests\Test-VersionConsistency.ps1` | PASS |
 | `Build.ps1` : génération et analyse syntaxique du standalone | Réussies, 41 fonctions, 5588 lignes |
 | Chargement du standalone et appel des nouvelles fonctions hors annuaire | Réussi |
 | Aide intégrée des 27 fonctions : synopsis et exemple | Présents pour toutes |
 
-Répartition des 129 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45, `Regression.Tests.ps1` 21, `ConsoleInterface.Tests.ps1` 9, `Interface.Tests.ps1` 5.
+Répartition des 133 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45, `Regression.Tests.ps1` 21, `ConsoleInterface.Tests.ps1` 13, `Interface.Tests.ps1` 5.
 
 ## Ce que ces tests couvrent
 
@@ -41,7 +41,9 @@ Répartition des 129 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45,
 
 ## Non vérifié dans cet environnement
 
-- **L'interface graphique n'a été exécutée sur aucune machine.** Ni GliderUI, ni Avalonia, ni Windows n'étaient disponibles. L'affichage réel de l'arborescence, de la grille des horaires, des menus contextuels, de la sélection multiple et des feuilles de propriétés reste entièrement à valider.
+- **L'interface graphique n'a été exécutée sur aucune machine ici.** Ni GliderUI, ni Avalonia, ni Windows n'étaient disponibles. L'affichage réel de l'arborescence, de la grille des horaires, des menus contextuels, de la sélection multiple et des feuilles de propriétés reste entièrement à valider.
+
+  Un premier lancement a eu lieu sur un poste Windows en 3.1.0-test1 : il s'est arrêté avant d'afficher quoi que ce soit, sur `Impossible de trouver le type [AvaloniaRuntimeXamlLoader]`. L'API employée étant conforme à la documentation de GliderUI, la cause est l'installation de GliderUI sur ce poste — serveur absent ou désynchronisé du module. La 3.1.0-test2 ajoute la vérification de démarrage et `Tests\Test-GliderUI.ps1` pour l'établir en une commande. **Cette hypothèse n'est pas encore confirmée** : elle le sera par la sortie du diagnostic.
 - Les interactions dépendantes de la version de GliderUI installée : `ContextMenu`, `DoubleTapped`, `DataGrid.SelectedItems`. Elles sont branchées de façon tolérante et chaque action dispose d'un bouton équivalent, mais ce repli n'a pas été observé en conditions réelles.
 - Toute écriture LDAP réelle : `logonHours`, `accountExpires`, `lockoutTime`, `userAccountControl`, création de groupe et d'unité, renommage, suppression, et la protection contre la suppression accidentelle qui passe par le descripteur de sécurité.
 - La lecture d'une stratégie de mot de passe affinée (`msDS-ResultantPSO`) sur un domaine de niveau 2008 ou supérieur.
@@ -55,6 +57,7 @@ Reprendre d'abord la recette 2.1.1 : connexion au domaine et avec un compte dél
 
 Ajouter ensuite, pour la console :
 
+0. **Démarrage.** Lancer `Lancer.cmd`. Si l'interface refuse de démarrer sur un type introuvable, exécuter `pwsh -NoProfile -File .\Tests\Test-GliderUI.ps1` et appliquer le verdict avant de poursuivre.
 1. **Arborescence.** Charger l'arborescence, déplier le domaine, sélectionner plusieurs unités et vérifier que le contenu correspond à celui d'ADUC, y compris `Builtin`, `Users` et `Computers`.
 2. **Sélection multiple et menus.** Sélectionner plusieurs comptes avec Ctrl et Maj, vérifier que les actions en lot portent bien sur toute la sélection. Tester le clic droit dans l'arborescence et dans la liste, et le double-clic sur un utilisateur. **Si l'une de ces interactions ne répond pas, vérifier que le bouton équivalent, lui, fonctionne** : c'est le repli prévu.
 3. **Propriétés.** Ouvrir un utilisateur, modifier un seul champ, enregistrer, puis rouvrir la fiche dans ADUC et vérifier que **seul** ce champ a changé. Vider un champ et vérifier que l'attribut est effacé.
