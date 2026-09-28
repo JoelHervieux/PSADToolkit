@@ -40,6 +40,8 @@ $readme=Read-ADTFileText 'README.md'
 $titre=($readme -split "`r?`n")[0]
 if ($titre -ne ('# PSADToolkit '+$version)) { $echecs+=("README.md : titre de niveau 1 '"+$titre+"'. Attendu '# PSADToolkit "+$version+"'.") }
 if ($readme.IndexOf('**Version `'+$version+'`') -lt 0) { $echecs+=('README.md : encadre d etat sans la version '+$version+'.') }
+$lien='releases/download/v'+$version+'/PSADToolkit-Setup-'+$version+'.exe'
+if ($readme.IndexOf($lien) -lt 0) { $echecs+=('README.md : lien direct de telechargement absent ou perime. Attendu '''+$lien+'''.') }
 
 $changelog=Read-ADTFileText 'CHANGELOG.md'
 $sections=@([regex]::Matches($changelog,'(?m)^##\s+(\S+)(?:\s+-\s+(\d{4}-\d{2}-\d{2}))?\s*$'))

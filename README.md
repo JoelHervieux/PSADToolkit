@@ -10,7 +10,7 @@ Administration Active Directory avec interface graphique en français : **consol
 
 ### Installation (recommandée)
 
-1. **Télécharger** `PSADToolkit-Setup-<version>.exe` depuis la page **[Releases](https://github.com/JoelHervieux/PSADToolkit/releases)** du dépôt : section *Assets* de la dernière version. Le fichier `SHA256SUMS.txt` publié à côté permet de vérifier le téléchargement : `Get-FileHash .\PSADToolkit-Setup-<version>.exe`.
+1. **Télécharger** le programme d'installation — lien direct de la version actuelle : **[PSADToolkit-Setup-3.2.0-test1.exe](https://github.com/JoelHervieux/PSADToolkit/releases/download/v3.2.0-test1/PSADToolkit-Setup-3.2.0-test1.exe)**. Toutes les versions sont sur la page **[Releases](https://github.com/JoelHervieux/PSADToolkit/releases)**, section *Assets*. Le fichier `SHA256SUMS.txt` publié à côté permet de vérifier le téléchargement : `Get-FileHash .\PSADToolkit-Setup-<version>.exe`.
 2. Lancer **`PSADToolkit-Setup-<version>.exe`** avec un compte administrateur du poste. L'assistant présente la licence, ce qui va être installé, puis demande le **dossier d'installation** (par défaut `C:\Program Files\PSADToolkit`) et propose un raccourci sur le Bureau.
 3. En fin d'installation, l'assistant prépare le poste **sans accès Internet** grâce aux paquets qu'il contient :
    - **PowerShell 7** s'il est absent ou plus ancien que 7.4 — installé à côté de Windows PowerShell 5.1, sans le remplacer, avec la **mise à jour par Microsoft Update** activée ;
@@ -44,7 +44,7 @@ Ces règles se règlent dans **`Launcher.settings.psd1`**, dans le dossier d'ins
 2. Extraire complètement le ZIP dans un dossier local, par exemple `C:\Outils\PSADToolkit`.
 3. Double-cliquer sur **Lancer.cmd** : il appelle le même lanceur que `PSADToolkit.exe`, qui installe GliderUI et son serveur depuis PowerShell Gallery. Sans Internet, voir *Installation hors ligne* ci-dessous.
 
-Les versions sont publiées par le workflow **Publication** (`.github/workflows/release.yml`) : il construit le programme d'installation, l'installe, l'ouvre et le désinstalle sur une machine Windows, puis seulement le dépose dans Releases. Une version de canal (`test`, `rc`) y apparaît comme préversion.
+Les versions sont publiées par le dernier job du pipeline `.github/workflows/windows.yml` : une fois les tests, le parcours de l'interface et les deux installations d'essai réussis, il dépose dans Releases **le fichier même qui vient d'être installé et testé**. Il se déclenche sur une étiquette `v<version>` ou sur un envoi dont le message de commit contient `[publier]`. Une version de canal (`test`, `rc`) y apparaît comme préversion.
 
 Pour construire soi-même le programme d'installation, sur Windows avec [Inno Setup 6](https://jrsoftware.org/isdl.php) : `.\installer\Build-Installer.ps1`. Le script compile `PSADToolkit.exe`, télécharge les paquets à livrer et produit `build\installer\PSADToolkit-Setup-<version>.exe`.
 

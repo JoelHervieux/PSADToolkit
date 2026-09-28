@@ -39,7 +39,7 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 | `PSADToolkit.psd1` → `PrivateData.PSData.Prerelease` | Canal seul : `test1`. Chaîne vide pour une version stable. | À la main. |
 | `dist\PSADToolkit-Standalone.ps1` (en-tête) | Version complète : `3.2.0-test1`. | `Build.ps1`, jamais à la main. |
 | `Start-PSADToolkit.ps1` (attribut `Title` du XAML) | Version complète. L'opérateur doit voir à l'écran qu'il utilise une version de test. | À la main. |
-| `README.md` (titre de niveau 1 et encadré d'état) | Version complète. | À la main. |
+| `README.md` (titre de niveau 1, encadré d'état, lien direct de téléchargement) | Version complète. | À la main. |
 | `CHANGELOG.md` | Une section `## <version complète> - AAAA-MM-JJ` par version, ordre décroissant. | À la main. |
 | Étiquette git | `v<version complète>`, par exemple `v3.2.0-test1`. | `git tag`. |
 | `PSADToolkit.exe` et `PSADToolkit-Setup-<version>.exe` | Version complète (nom du fichier, écran de désinstallation) ; `MAJEUR.MINEUR.CORRECTIF.0` dans les propriétés du fichier. | `installer\Build-Installer.ps1`, à partir du manifeste. |
@@ -68,7 +68,7 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 6. Construire le programme d'installation sur Windows avec Inno Setup 6 : `.\installer\Build-Installer.ps1`. Le pipeline `.github/workflows/windows.yml` le construit, l'installe en silence, ouvre l'interface puis le désinstalle ; il doit être vert.
 7. Commiter, puis étiqueter : `git tag -a v3.2.0-test1 -m "PSADToolkit 3.2.0-test1"`.
 8. Pousser la branche et l'étiquette : `git push -u origin <branche> --follow-tags`.
-9. Publier : onglet **Actions → Publication → Run workflow** sur le commit à publier, ou envoi de l'étiquette `v<version>`. Le workflow vérifie la cohérence des versions, construit et teste le programme d'installation, puis crée la release `v<version>` avec `PSADToolkit-Setup-<version>.exe` et `SHA256SUMS.txt`. Une version de canal est publiée comme préversion.
+9. Publier : envoyer l'étiquette `v<version>`, ou un commit dont le message contient `[publier]`. Après les tests, le parcours de l'interface et les deux installations d'essai, le job **Publication sur la page Releases** de `.github/workflows/windows.yml` vérifie la version, reprend le programme d'installation qui vient d'être testé et crée la release `v<version>` avec `PSADToolkit-Setup-<version>.exe` et `SHA256SUMS.txt`. Une version de canal est publiée comme préversion. Mettre à jour le lien direct de téléchargement de `README.md`.
 
 ## Passage en version stable
 

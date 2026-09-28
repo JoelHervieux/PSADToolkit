@@ -1,8 +1,14 @@
 name: Windows
 
+# Tests, parcours de l interface, programme d installation. Le dernier job publie
+# le programme d installation sur la page Releases, une fois TOUT le reste vert :
+# sur une etiquette v<version>, ou sur un envoi dont le message de commit contient
+# [publier]. Le fichier publie est celui qui vient d etre installe et teste.
+
 on:
   push:
     branches: [ main, 'claude/**' ]
+    tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
 
@@ -142,3 +148,88 @@ jobs:
           name: installation-sans-powershell7
           path: ${{ runner.temp }}/installation
           if-no-files-found: warn
+
+  publication:
+    name: Publication sur la page Releases
+    needs: [ tests, interface, installateur, poste-sans-powershell7 ]
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[publier]'))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PSADToolkit-Setup
+          path: ${{ runner.temp }}/setup
+      - name: Version et notes
+        id: version
+        shell: pwsh
+        run: |
+          $manifest = Import-PowerShellDataFile .\PSADToolkit.psd1
+          $channel = [string]$manifest.PrivateData.PSData.Prerelease
+          $version = [string]$manifest.ModuleVersion
+          if ($channel) { $version += '-' + $channel }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne ('v' + $version)) {
+            throw ('Etiquette {0} differente de la version du manifeste {1}.' -f $env:GITHUB_REF_NAME, $version)
+          }
+          $setup = Get-Item ("$env:RUNNER_TEMP\setup\PSADToolkit-Setup-{0}.exe" -f $version)
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
+          ('{0}  {1}' -f $hash, $setup.Name) | Set-Content "$env:RUNNER_TEMP\setup\SHA256SUMS.txt" -Encoding ascii
+
+          # Section du CHANGELOG de cette version.
+          $changelog = Get-Content -Raw .\CHANGELOG.md
+          $pattern = '(?ms)^## ' + [regex]::Escape($version) + '\b[^\n]*\n(.*?)(?=^## |\z)'
+          $section = [regex]::Match($changelog, $pattern).Groups[1].Value.Trim()
+          $url = 'https://github.com/{0}/releases/download/v{1}/{2}' -f $env:GITHUB_REPOSITORY, $version, $setup.Name
+          $notes = @(
+            '## Telecharger'
+            ''
+            ('**[{0}]({1})** ({2:N0} Mo)' -f $setup.Name, $url, ($setup.Length / 1MB))
+            ''
+            '## Installer'
+            ''
+            '1. Executer le fichier avec un compte administrateur du poste : licence, dossier d installation, raccourcis.'
+            '2. Ouvrir **PSADToolkit** depuis le menu Demarrer, puis choisir le domaine a gerer.'
+            ''
+            'PowerShell 7 et GliderUI sont inclus : aucun acces a Internet n est necessaire pour installer. Ils sont ensuite tenus a jour automatiquement.'
+            ''
+            'Windows 10 1607, Windows 11 ou Windows Server 2016 a 2025. Le programme n est pas signe : SmartScreen peut demander **Informations complementaires > Executer quand meme**.'
+            ''
+            ('SHA256 : `{0}`' -f $hash)
+            ''
+            '## Changements'
+            ''
+            $section
+          )
+          $notes -join "`n" | Set-Content "$env:RUNNER_TEMP\notes.md" -Encoding utf8
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$(([bool]$channel).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "setup=$($setup.FullName)" >> $env:GITHUB_OUTPUT
+      - name: Publier
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          SETUP: ${{ steps.version.outputs.setup }}
+        run: |
+          $tag = 'v' + $env:VERSION
+          $files = @($env:SETUP, "$env:RUNNER_TEMP\setup\SHA256SUMS.txt")
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Meme version republiee : remplacer les fichiers et les notes.
+            gh release upload $tag @files --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE) { throw 'Envoi des fichiers en echec.' }
+            gh release edit $tag --notes-file "$env:RUNNER_TEMP\notes.md" --repo $env:GITHUB_REPOSITORY
+          } else {
+            $options = @('--title', ('PSADToolkit ' + $env:VERSION), '--notes-file', "$env:RUNNER_TEMP\notes.md", '--target', $env:GITHUB_SHA)
+            if ($env:PRERELEASE -eq 'true') { $options += '--prerelease' }
+            gh release create $tag @files @options --repo $env:GITHUB_REPOSITORY
+          }
+          if ($LASTEXITCODE) { throw 'Publication en echec.' }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json url,assets --jq '.url, (.assets[] | .name + "  " + .url)'

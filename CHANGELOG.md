@@ -10,8 +10,8 @@ Installation en un programme, prerequis tenus a jour, interface simplifiee.
   choix du dossier d installation, raccourcis du menu Demarrer et du Bureau,
   desinstallation depuis Parametres > Applications. Il livre PowerShell 7 (MSI),
   GliderUI et `GliderUI.Server.win-x64` : l installation fonctionne hors ligne.
-  Construit par `installer\Build-Installer.ps1`, publie sur la page Releases du
-  depot par le workflow Publication apres une installation d essai sur Windows.
+  Construit par `installer\Build-Installer.ps1`. Publie sur la page Releases par
+  le pipeline Windows, une fois les tests et les installations d essai reussis.
 - `PSADToolkit.exe` : petit executable C# qui demarre `Launcher.ps1` sans console.
   `Lancer.cmd` appelle desormais le meme lanceur.
 - `Launcher.ps1` s execute avec Windows PowerShell 5.1 et, a chaque lancement :
