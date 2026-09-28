@@ -15,6 +15,8 @@ Machines GitHub Actions `windows-2022` (Windows Server 2022, build 20348) et `wi
 | Installation silencieuse, Server 2022 | Fichiers, raccourci, GliderUI et son serveur installés **depuis les paquets livrés** dans `Program Files\PowerShell\Modules`, types chargés |
 | Interface **installée** parcourue avec l'annuaire simulé | Réussi |
 | `PSADToolkit.exe` : lanceur, vérifications, ouverture de l'interface sur **Choisir un domaine** | Réussi |
+| Désinstallation silencieuse | Dossier et raccourci retirés, PowerShell 7 conservé |
+| **Poste sans PowerShell 7**, Server 2025 (build 26100, base de Windows 11 24H2) : PowerShell 7 et GliderUI désinstallés, puis programme d'installation | **PowerShell 7.4.20 installé depuis le paquet livré**, GliderUI installé, interface installée parcourue, `PSADToolkit.exe` ouvre l'interface, désinstallation propre |
 
 Le parcours de l'interface (`Tests\CI\Smoke-Sequence.ps1`) remplace les fonctions de lecture et d'écriture par un annuaire simulé (`Tests\CI\Smoke-FakeDirectory.ps1`) : les fausses écritures sont générées à partir des paramètres des vraies, si bien qu'un paramètre renommé fait échouer le test. Chaque fenêtre s'ouvre réellement dans GliderUI puis se referme ; toute erreur que l'opérateur aurait vue est comptée comme un échec. Captures d'écran dans les artefacts du pipeline.
 
@@ -23,7 +25,6 @@ Le parcours a révélé, avant publication, trois défauts qu'aucun test hors Wi
 ## Non vérifié pour 3.2.0-test1
 
 - Toute lecture ou écriture sur un **véritable domaine** : la recette ci-dessous reste entièrement à faire.
-- L'installation de PowerShell 7 par le programme sur un poste qui ne l'a pas : voir le job « Installation sur un poste sans PowerShell 7 » du pipeline.
 - La mise à jour effective de GliderUI : aucune version 0.4.x postérieure à 0.4.1 n'était publiée ; seule la recherche a été exercée.
 - L'élévation interactive (UAC) du lanceur, l'écran de l'assistant d'installation et SmartScreen : le pipeline installe en silence avec un compte déjà administrateur.
 - Une stratégie de groupe imposant `AllSigned` : les scripts ne sont pas signés.
