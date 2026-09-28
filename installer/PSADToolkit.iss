@@ -103,9 +103,9 @@ begin
     if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, ExpandConstant('{app}'),
       SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       ResultCode := -1;
+    { Une ligne qui commence par un crochet serait lue comme une section. }
     if ResultCode <> 0 then
-      SuppressibleMsgBox(FmtMessage(CustomMessage('PrerequisitesFailed'),
-        [IntToStr(ResultCode), ExpandConstant('{commonappdata}\PSADToolkit\Logs\install.log')]),
-        mbInformation, MB_OK, IDOK);
+      SuppressibleMsgBox(FmtMessage(CustomMessage('PrerequisitesFailed'), [IntToStr(ResultCode),
+        ExpandConstant('{commonappdata}\PSADToolkit\Logs\install.log')]), mbInformation, MB_OK, IDOK);
   end;
 end;
