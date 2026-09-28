@@ -1,4 +1,5 @@
 # Sonde temporaire : que permet la machine Windows de GitHub ?
+param([ValidateSet('Install','Ui')][string]$Phase = 'Install')
 $ErrorActionPreference = 'Continue'
 function Check { param([string]$Name, [scriptblock]$Body)
     try { $r = & $Body; Write-Host ("[OK]   {0} : {1}" -f $Name, ($r | Out-String).Trim()) }
@@ -11,9 +12,13 @@ Check 'ISCC' { $p = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'; 
 Check 'csc' { $p = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'; if (Test-Path $p) { $p } else { throw 'absent' } }
 Check 'Windows PowerShell 5.1' { (powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') }
 Check 'Pester sous WinPS' { (powershell.exe -NoProfile -Command '(Get-Module -ListAvailable Pester | Sort Version -Desc | Select -First 1).Version.ToString()') }
+if ($Phase -eq 'Install') {
 Check 'Install GliderUI 0.4.1' { Install-PSResource -Name GliderUI -Version 0.4.1 -TrustRepository -Scope CurrentUser -ErrorAction Stop; 'installe' }
 Check 'Install-GLIServer' { Import-Module GliderUI -RequiredVersion 0.4.1 -ErrorAction Stop; Install-GLIServer -TrustRepository -ErrorAction Stop; 'installe' }
 Check 'Modules' { Get-Module -ListAvailable GliderUI, GliderUI.Server.* | ForEach-Object { '{0} {1} {2}' -f $_.Name, $_.Version, $_.ModuleBase } }
+return
+}
+Check 'Import dans un processus neuf' { Import-Module GliderUI -RequiredVersion 0.4.1 -ErrorAction Stop; (Get-Module GliderUI).Version.ToString() }
 Check 'Nom complet' { [bool]('GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader' -as [type]) }
 Check 'Nom court via using (bloc)' { [bool]([scriptblock]::Create("using namespace GliderUI.Avalonia.Markup.Xaml`n[AvaloniaRuntimeXamlLoader]").Invoke()) }
 

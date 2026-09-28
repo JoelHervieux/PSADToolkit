@@ -9,7 +9,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Sonde
+      - name: Sonde - installation
         shell: pwsh
-        timeout-minutes: 12
-        run: ./Tests/CI/Probe-Runner.ps1
+        timeout-minutes: 8
+        run: ./Tests/CI/Probe-Runner.ps1 -Phase Install
+      - name: Sonde - interface (processus neuf)
+        shell: pwsh
+        timeout-minutes: 8
+        run: ./Tests/CI/Probe-Runner.ps1 -Phase Ui
