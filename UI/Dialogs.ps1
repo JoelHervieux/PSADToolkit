@@ -90,8 +90,7 @@ function Show-ADTUiNewUser {
         (New-ADTUiText -Wrap -Text 'Le mot de passe temporaire est genere par le module et affiche dans la grille des resultats si la case "Afficher / exporter les mots de passe generes" est cochee. Il n est jamais ecrit dans le journal.'),
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
 
     $parameters = @{
@@ -153,8 +152,7 @@ function Show-ADTUiNewGroup {
         (New-ADTUiStack -Spacing 4 -Child @((New-ADTUiText -Text 'Type de groupe'), $category)),
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
 
     $parameters = @{
@@ -196,8 +194,7 @@ function Show-ADTUiNewOrganizationalUnit {
         $target.Panel, $name.Panel, $description.Panel, $protect,
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
 
     $parameters = @{ Path = ([string]$target.Box.Text).Trim(); Name = ([string]$name.Box.Text).Trim() }
@@ -265,8 +262,7 @@ function Show-ADTUiPasswordReset {
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
     $dialog.Content = New-ADTUiStack -Margin 18 -Spacing 12 -Child $children
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
 
     $parameters = @{ Length = [int]$length.Value }
@@ -320,8 +316,7 @@ function Show-ADTUiGroupMembership {
         (New-ADTUiText -Wrap -Text 'Un groupe peut etre designe par son nom affiche ou par son nom anterieur a Windows 2000. Le groupe principal d un compte ne peut pas etre retire ici.'),
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
 
     $parameters = @{}
@@ -431,8 +426,7 @@ function Show-ADTUiMemberSelection {
         $count,
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     if (-not $state.Run) { return $null }
     return @($state.Included)
 }
@@ -529,7 +523,6 @@ function Show-ADTUiGroupMemberManager {
         (New-ADTUiRow -Spacing 10 -Child @($hoursButton, $groupsButton, $disableButton, $passwordButton)),
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($close))
     )
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     return $state.Result
 }

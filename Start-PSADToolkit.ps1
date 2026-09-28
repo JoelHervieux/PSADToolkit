@@ -33,9 +33,30 @@ using namespace GliderUI.Avalonia.Platform.Storage
     DisabledControlsWhileProcessing.
 #>
 [CmdletBinding()]
-param()
+param(
+    # Version exacte de GliderUI a charger. Le lanceur la fixe apres avoir verifie
+    # qu elle fonctionne ; vide = la plus recente installee.
+    [string]$GliderUIVersion,
+    # Fichier ou consigner une erreur fatale. Le lanceur execute l interface sans
+    # console : c est par ce fichier qu il peut expliquer un echec a l operateur.
+    [string]$ErrorLogPath,
+    # Test de fumee d integration continue : annuaire simule, chaque fenetre ouverte
+    # puis refermee. Exige le dossier Tests\CI, absent d une installation.
+    [switch]$SmokeTest,
+    [string]$SmokeReportPath
+)
 $ErrorActionPreference = 'Stop'
 $script:Root = $PSScriptRoot
+
+trap {
+    if ($ErrorLogPath) {
+        try {
+            $details = ($_ | Out-String) + [Environment]::NewLine + [string]$_.ScriptStackTrace
+            Set-Content -LiteralPath $ErrorLogPath -Value $details -Encoding UTF8
+        } catch { Write-Warning ('Journal d erreur non ecrit : ' + $_.Exception.Message) }
+    }
+    break
+}
 
 if (-not $IsWindows) {
     throw 'PSADToolkit interroge Active Directory via System.DirectoryServices, disponible uniquement sous Windows.'
@@ -43,7 +64,8 @@ if (-not $IsWindows) {
 if (-not (Get-Module -ListAvailable -Name GliderUI)) {
     throw "Module GliderUI introuvable. Installer :`n    Install-PSResource -Name GliderUI`n    Install-GLIServer"
 }
-Import-Module GliderUI -ErrorAction Stop
+if ($GliderUIVersion) { Import-Module GliderUI -RequiredVersion $GliderUIVersion -ErrorAction Stop }
+else { Import-Module GliderUI -ErrorAction Stop }
 
 # Verification des types GliderUI avant de construire quoi que ce soit.
 #
@@ -146,38 +168,30 @@ Import-Module (Join-Path $script:Root 'PSADToolkit.psd1') -Force -ErrorAction St
 # publiques pour que l affichage et l ecriture ne divergent jamais.
 foreach ($helper in @(
         'DirectoryBackend.ps1', 'DirectoryConsole.ps1', 'DirectoryWrite.ps1',
-        'CsvHelpers.ps1', 'Format-ADTDisplay.ps1', 'LogonHours.ps1', 'ObjectStatus.ps1'
+        'CsvHelpers.ps1', 'Format-ADTDisplay.ps1', 'LogonHours.ps1', 'ObjectStatus.ps1',
+        'DomainDiscovery.ps1'
     )) {
     . (Join-Path $script:Root (Join-Path 'Private' $helper))
 }
 
 # Console d administration : un fichier par domaine fonctionnel. L ordre importe
 # peu, les fonctions ne sont appelees qu une fois la fenetre construite.
-foreach ($module in @('Common.ps1', 'LogonHours.ps1', 'Dialogs.ps1', 'Properties.ps1', 'Console.ps1')) {
+foreach ($module in @('Common.ps1', 'Connection.ps1', 'LogonHours.ps1', 'Dialogs.ps1', 'Properties.ps1', 'Console.ps1')) {
     . (Join-Path $script:Root (Join-Path 'UI' $module))
+}
+
+# Test de fumee : l annuaire simule remplace les fonctions de lecture et d ecriture.
+# Charge apres le module et les helpers, il les masque pour tout appel fait depuis
+# l interface.
+if ($SmokeTest) {
+    $script:ADTUiSmoke.Enabled = $true
+    . (Join-Path $script:Root 'Tests\CI\Smoke-FakeDirectory.ps1')
 }
 
 $script:Rows = @()
 $script:Operation = ''
 
 #--- Aides generales ----------------------------------------------------------
-
-function Get-ADTUiConnection {
-    $parameters = @{}
-    $server = $serverBox.Text
-    if ($server) { $server = $server.Trim() }
-    if ($server) { $parameters['Server'] = $server }
-    if ([bool]$otherAccount.IsChecked) {
-        $user = $userBox.Text
-        if ($user) { $user = $user.Trim() }
-        if (-not $user -or -not $passwordBox.Text) { throw 'Indiquer le compte DOMAINE\utilisateur (ou UPN) et son mot de passe.' }
-        $secure = New-Object System.Security.SecureString
-        foreach ($character in $passwordBox.Text.ToCharArray()) { $secure.AppendChar($character) }
-        $secure.MakeReadOnly()
-        $parameters['Credential'] = New-Object System.Management.Automation.PSCredential($user, $secure)
-    }
-    return $parameters
-}
 
 function Get-ADTUiParentDN {
     param([string]$DN)
@@ -311,13 +325,13 @@ function Show-ADTUiDialog {
     $panel.Children.Add($buttons)
 
     $dialog.Content = $panel
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     return $state.Accepted
 }
 
 function Show-ADTUiError {
     param([string]$Message)
+    if ($script:ADTUiSmoke.Enabled) { [void]$script:ADTUiSmoke.Errors.Add($Message) }
     $null = Show-ADTUiDialog -Title 'PSADToolkit - erreur' -Message $Message
 }
 
@@ -435,8 +449,7 @@ function Select-ADTUiOrganizationalUnit {
     $panel.Children.Add($buttons)
 
     $dialog.Content = $panel
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     return $state.DN
 }
 
@@ -515,8 +528,7 @@ function Show-ADTUiImportPreview {
     $panel.Children.Add($buttons)
 
     $dialog.Content = $panel
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     return $state.Accepted
 }
 
@@ -775,15 +787,14 @@ function Invoke-ADTUiCommand {
             }).Count
         $statusText.Text = ('{0} resultat(s). Verifier les colonnes Status, Error et Messages.' -f $script:Rows.Count)
         if ($failed -or @($commandErrors).Count) { $statusText.Text = 'Termine avec erreurs : consulter les resultats et les messages.' }
-        if ($script:Operation -eq 'Test-ADTPrerequisite' -and $script:Rows.Count -and $script:Rows[0].Ready) {
-            $serverBox.Text = [string]$script:Rows[0].Server
-            $statusText.Text = 'Connecte a ' + [string]$script:Rows[0].DomainName + ' via ' + [string]$script:Rows[0].Server
-        }
     } catch {
         $detailsBox.Text = $_.Exception.Message
         $statusText.Text = 'Operation interrompue : consulter le detail.'
     } finally {
         $progress.IsIndeterminate = $false
+        # Le journal est replie par defaut pour laisser la place a l annuaire ; il
+        # s ouvre de lui-meme des qu une operation produit un resultat a lire.
+        try { $journal.IsExpanded = $true } catch { Add-ADTUiSmokeWarning 'Journal des operations non deplie.' }
     }
 }
 
@@ -838,66 +849,40 @@ function Invoke-ADTUiExecute {
 $mainXaml = @'
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PSADToolkit 3.1.0-test4 | Administration Active Directory"
-        Width="1360" Height="1000">
-  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        Title="PSADToolkit 3.2.0-test1 | Administration Active Directory"
+        Width="1440" Height="980">
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
 
-    <Border Grid.Row="0" Background="#162840" Padding="24,14">
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <TextBlock Text="PSADToolkit" Foreground="White" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
-        <TextBlock Text="Console d administration, comptes, acces et audits Active Directory" Foreground="#BED4ED" VerticalAlignment="Center" />
-      </StackPanel>
+    <Border Grid.Row="0" Background="#162840" Padding="20,12">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="24">
+        <TextBlock Grid.Column="0" Text="PSADToolkit" Foreground="White" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+          <TextBlock x:Name="domain_text" Text="Aucun domaine" Foreground="White" FontWeight="Bold" />
+          <TextBlock x:Name="domain_detail" Text="" Foreground="#BED4ED" />
+        </StackPanel>
+        <Button Grid.Column="2" x:Name="change_domain" Content="Changer de domaine" VerticalAlignment="Center" />
+      </Grid>
     </Border>
 
-    <Border Grid.Row="1" x:Name="connection_panel" Margin="16,14,16,0" Padding="16"
-            BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="6">
-      <StackPanel Spacing="10">
-        <Grid ColumnDefinitions="2*,Auto,2*,2*,Auto" ColumnSpacing="14">
-          <StackPanel Grid.Column="0" Spacing="4">
-            <TextBlock Text="Controleur de domaine (FQDN, vide = automatique)" />
-            <TextBox x:Name="server_box" Watermark="dc01.contoso.local" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
-            <CheckBox x:Name="other_account" Content="Autre compte" />
-          </StackPanel>
-          <StackPanel Grid.Column="2" Spacing="4">
-            <TextBlock Text="Compte (DOMAINE\utilisateur ou UPN)" />
-            <TextBox x:Name="user_box" IsEnabled="False" />
-          </StackPanel>
-          <StackPanel Grid.Column="3" Spacing="4">
-            <TextBlock Text="Mot de passe" />
-            <TextBox x:Name="password_box" PasswordChar="*" IsEnabled="False" />
-          </StackPanel>
-          <StackPanel Grid.Column="4" VerticalAlignment="Bottom">
-            <Button x:Name="test_button" Content="Tester la connexion" Classes="accent"
-                    Width="190" HorizontalContentAlignment="Center" />
-          </StackPanel>
+    <TabControl Grid.Row="1" x:Name="tabs" Margin="12,8,12,0" />
+
+    <Expander Grid.Row="2" x:Name="journal" Header="Journal des operations" IsExpanded="False"
+              Margin="12,8,12,0" HorizontalAlignment="Stretch">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+          <CheckBox Grid.Column="0" x:Name="show_passwords" Content="Afficher / exporter les mots de passe generes" />
+          <Button Grid.Column="1" x:Name="export_button" Content="Exporter les resultats CSV" IsEnabled="False" />
         </Grid>
-        <TextBlock Text="Compte de la session Windows utilise par defaut. Les droits AD delegues sont necessaires : etre administrateur local ne les donne pas."
-                   Foreground="#4A5A6E" TextWrapping="Wrap" />
+        <Border Height="220" BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="4">
+          <ContentControl x:Name="grid_host" />
+        </Border>
+        <TextBox x:Name="details_box" Height="80" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap"
+                 Watermark="Avertissements et erreurs de la derniere operation." />
       </StackPanel>
-    </Border>
+    </Expander>
 
-    <TabControl Grid.Row="2" x:Name="tabs" Margin="16,14,16,0" />
-
-    <Grid Grid.Row="3" Margin="16,16,16,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-      <TextBlock Grid.Column="0" Text="Resultats" FontWeight="Bold" VerticalAlignment="Center" />
-      <CheckBox Grid.Column="1" x:Name="show_passwords" Content="Afficher / exporter les mots de passe generes" />
-      <Button Grid.Column="2" x:Name="export_button" Content="Exporter les resultats CSV" IsEnabled="False" />
-    </Grid>
-
-    <Border Grid.Row="4" Margin="16,8,16,0" MinHeight="150"
-            BorderBrush="#C9D4E2" BorderThickness="1" CornerRadius="4">
-      <ContentControl x:Name="grid_host" />
-    </Border>
-
-    <TextBox Grid.Row="5" x:Name="details_box" Margin="16,10,16,0" Height="96"
-             AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap"
-             Watermark="Avertissements et erreurs de la derniere operation." />
-
-    <Grid Grid.Row="6" Margin="16,10,16,16" ColumnDefinitions="*,Auto" ColumnSpacing="16">
-      <TextBlock Grid.Column="0" x:Name="status_text" VerticalAlignment="Center" TextWrapping="Wrap"
-                 Text="Pret. Tester la connexion, puis charger l arborescence dans l onglet Console AD." />
+    <Grid Grid.Row="3" Margin="12,8,12,12" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+      <TextBlock Grid.Column="0" x:Name="status_text" VerticalAlignment="Center" TextWrapping="Wrap" Text="Pret." />
       <ProgressBar Grid.Column="1" x:Name="progress" Width="220" VerticalAlignment="Center" />
     </Grid>
   </Grid>
@@ -905,13 +890,11 @@ $mainXaml = @'
 '@
 
 $window = [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]::Parse($mainXaml, $null)
-$connectionPanel = $window.FindControl('connection_panel')
-$serverBox = $window.FindControl('server_box')
-$otherAccount = $window.FindControl('other_account')
-$userBox = $window.FindControl('user_box')
-$passwordBox = $window.FindControl('password_box')
-$testButton = $window.FindControl('test_button')
+$domainText = $window.FindControl('domain_text')
+$domainDetail = $window.FindControl('domain_detail')
+$changeDomain = $window.FindControl('change_domain')
 $tabs = $window.FindControl('tabs')
+$journal = $window.FindControl('journal')
 $showPasswords = $window.FindControl('show_passwords')
 $exportButton = $window.FindControl('export_button')
 $gridHost = $window.FindControl('grid_host')
@@ -919,18 +902,19 @@ $detailsBox = $window.FindControl('details_box')
 $statusText = $window.FindControl('status_text')
 $progress = $window.FindControl('progress')
 
-$otherAccount.AddIsCheckedChanged({
-        $enabled = [bool]$otherAccount.IsChecked
-        $userBox.IsEnabled = $enabled
-        $passwordBox.IsEnabled = $enabled
-        if (-not $enabled) { $passwordBox.Text = '' }
-    })
-
-$testButton.AddClick([GliderUI.EventCallback]@{
-        DisabledControlsWhileProcessing = @($testButton, $tabs)
+$changeDomain.AddClick([GliderUI.EventCallback]@{
+        DisabledControlsWhileProcessing = @($changeDomain, $tabs)
         ScriptBlock                     = {
-            try { Invoke-ADTUiCommand -Command 'Test-ADTPrerequisite' -Parameters (Get-ADTUiConnection) }
-            catch { Show-ADTUiError $_.Exception.Message }
+            try {
+                $chosen = Show-ADTUiDomainChooser -AllowCancel
+                if (-not $chosen) { return }
+                Set-ADTUiConnection -Connection $chosen
+                $script:Rows = @()
+                Update-ADTUiResultGrid
+                $detailsBox.Text = ''
+                Update-ADTUiConsoleTree
+                $tabs.SelectedIndex = 0
+            } catch { Show-ADTUiError $_.Exception.Message }
         }
     })
 
@@ -955,12 +939,21 @@ $exportButton.AddClick({
 
 #--- Onglets ------------------------------------------------------------------
 
-# La console d administration est le premier onglet : c est par elle qu on navigue
-# dans le domaine. Les onglets historiques restent inchanges derriere.
+# L annuaire est la section principale : c est par lui qu on navigue dans le
+# domaine. Les traitements en lot historiques sont regroupes dans Outils, ou chacun
+# garde son onglet, ses champs et son apercu.
 $consoleTab = [GliderUI.Avalonia.Controls.TabItem]::new()
-$consoleTab.Header = 'Console AD'
-$consoleTab.Content = New-ADTUiConsoleTab -Busy @($tabs, $connectionPanel)
+$consoleTab.Header = 'Annuaire'
+$consoleTab.Content = New-ADTUiConsoleTab -Busy @($tabs, $changeDomain)
 $tabs.Items.Add($consoleTab) | Out-Null
+
+$script:ToolTabs = [GliderUI.Avalonia.Controls.TabControl]::new()
+$script:ToolTabs.Margin = [GliderUI.Avalonia.Thickness]::new(4)
+$toolsTab = [GliderUI.Avalonia.Controls.TabItem]::new()
+$toolsTab.Header = 'Outils'
+$toolsTab.Content = $script:ToolTabs
+$script:ToolsTabIndex = $tabs.Items.Count
+$tabs.Items.Add($toolsTab) | Out-Null
 
 # Registre des champs de chaque onglet : la console pre-remplit l OU de destination
 # de l import CSV et bascule dessus, plutot que de dupliquer l apercu d import.
@@ -1018,7 +1011,7 @@ foreach ($spec in $specs) {
             # Le traitement se deroule dans le runspace principal : la fenetre reste
             # reactive, mais l onglet et la connexion sont neutralises pour interdire
             # une seconde operation simultanee.
-            DisabledControlsWhileProcessing = @($run, $tabs, $connectionPanel)
+            DisabledControlsWhileProcessing = @($run, $tabs, $changeDomain)
             ScriptBlock                     = { Invoke-ADTUiExecute -Spec $spec -Fields $fields -Simulate $simulate }.GetNewClosure()
         })
 
@@ -1051,11 +1044,24 @@ foreach ($spec in $specs) {
     $tab.Header = [string]$spec.Title
     $tab.Content = $content
     $script:TabFields[[string]$spec.Command] = $fields
-    $script:TabIndex[[string]$spec.Command] = $tabs.Items.Count
-    $tabs.Items.Add($tab) | Out-Null
+    $script:TabIndex[[string]$spec.Command] = $script:ToolTabs.Items.Count
+    $script:ToolTabs.Items.Add($tab) | Out-Null
 }
 
-#--- Boucle d evenements ------------------------------------------------------
+#--- Demarrage -----------------------------------------------------------------
+
+if ($SmokeTest) {
+    # Integration continue : parcours scripte de toute l interface, puis sortie.
+    . (Join-Path $script:Root 'Tests\CI\Smoke-Sequence.ps1')
+    return
+}
+
+# On choisit le domaine avant d entrer : l annuaire s ouvre deja charge.
+$initial = Show-ADTUiDomainChooser
+if (-not $initial) { return }
+Set-ADTUiConnection -Connection $initial
+try { Update-ADTUiConsoleTree }
+catch { Show-ADTUiError ('Lecture de l annuaire impossible : ' + $_.Exception.Message) }
 
 try {
     $window.Show()
@@ -1065,4 +1071,5 @@ try {
 } finally {
     $script:Rows = @()
     $script:Operation = ''
+    $script:Connection = @{ Server = ''; DomainName = ''; Credential = $null; Account = '' }
 }

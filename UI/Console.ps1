@@ -33,7 +33,22 @@ $script:Console = @{
     SearchBox     = $null
     SearchScope   = $null
     TypeFilter    = $null
+    Summary       = $null
     Nodes         = @{}
+    # Arborescence : chaque noeud porte une cle, decrite ici. Un DN peut contenir
+    # n importe quel caractere : l inscrire dans le Tag imposerait un format fragile.
+    NodeInfo      = @{}
+    NodeSeq       = 0
+    # Noeuds Utilisateurs / Groupes / Ordinateurs ajoutes sous chaque conteneur.
+    Categories    = @{}
+    # Contenu deja lu, par conteneur : passer d une categorie a l autre ne relit pas
+    # l annuaire.
+    Cache         = @{}
+    ViewKey       = ''
+    ClassFilter   = ''
+    # Au-dela, un noeud "voir la liste" remplace les objets : chaque noeud coute des
+    # allers-retours vers le serveur GliderUI.
+    LeafLimit     = 100
 }
 
 function Get-ADTUiConsoleColumn {
@@ -80,9 +95,37 @@ function Set-ADTUiConsoleStatus {
     $statusText.Text = $Message
 }
 
+function Get-ADTUiConsoleCategory {
+    return @(
+        @{ Class = 'user'; Label = 'Utilisateurs' },
+        @{ Class = 'group'; Label = 'Groupes' },
+        @{ Class = 'computer'; Label = 'Ordinateurs' }
+    )
+}
+
+function New-ADTUiConsoleNode {
+    param([string]$Header, [hashtable]$Info)
+    $script:Console.NodeSeq++
+    $key = 'n' + $script:Console.NodeSeq
+    $node = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
+    $node.Header = $Header
+    $node.Tag = $key
+    $script:Console.NodeInfo[$key] = $Info
+    return $node
+}
+
+function Get-ADTUiConsoleNodeInfo {
+    $selected = $null
+    try { $selected = $script:Console.Tree.SelectedItem } catch { $selected = $null }
+    if (-not $selected) { return $null }
+    $key = [string](Get-ADTUiValue -Target $selected -Name 'Tag')
+    if ($key -and $script:Console.NodeInfo.ContainsKey($key)) { return $script:Console.NodeInfo[$key] }
+    return $null
+}
+
 function Update-ADTUiConsoleTree {
 <#
-    Recharge l arborescence des conteneurs du domaine.
+    Recharge l arborescence des conteneurs du domaine, puis affiche le conteneur vise.
 #>
     param([string]$SelectDN)
     $connection = Get-ADTUiConnection
@@ -92,6 +135,10 @@ function Update-ADTUiConsoleTree {
 
     $script:Console.DomainDN = $domainDN
     $script:Console.DomainName = [string]$domain.DNSRoot
+    $script:Console.NodeInfo = @{}
+    $script:Console.Categories = @{}
+    $script:Console.Cache = @{}
+    $script:Console.ViewKey = ''
 
     $scope = @{ Server = [string]$domain.Server }
     if ($connection.ContainsKey('Credential')) { $scope['Credential'] = $connection['Credential'] }
@@ -101,17 +148,13 @@ function Update-ADTUiConsoleTree {
             -Property @('name', 'distinguishedName', 'objectClass') @scope |
         Sort-Object -Property @{ Expression = { Get-ADTUiDNDepth ([string]$_.DistinguishedName) } }, @{ Expression = { [string]$_.Name } })
 
-    $root = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
-    $root.Header = $script:Console.DomainName
-    $root.Tag = $domainDN
+    $root = New-ADTUiConsoleNode -Header $script:Console.DomainName -Info @{ Kind = 'Container'; ContainerDN = $domainDN }
     $root.IsExpanded = $true
 
     $index = @{ $domainDN = $root }
     foreach ($container in $containers) {
         $dn = [string]$container.DistinguishedName
-        $node = [GliderUI.Avalonia.Controls.TreeViewItem]::new()
-        $node.Header = [string]$container.Name
-        $node.Tag = $dn
+        $node = New-ADTUiConsoleNode -Header ([string]$container.Name) -Info @{ Kind = 'Container'; ContainerDN = $dn }
         $parent = $root
         $parentDN = Get-ADTUiParentDN $dn
         if ($parentDN -and $index.ContainsKey($parentDN)) { $parent = $index[$parentDN] }
@@ -132,36 +175,137 @@ function Update-ADTUiConsoleTree {
         $index[$walk].IsExpanded = $true
         $walk = Get-ADTUiParentDN $walk
     }
-    try { $tree.SelectedItem = $index[$target] } catch { Write-Verbose 'Selection de l arborescence non appliquee.' }
+    try { $tree.SelectedItem = $index[$target] } catch { Add-ADTUiSmokeWarning 'Selection de l arborescence non appliquee.' }
 
+    Show-ADTUiConsoleView -ContainerDN $target -Refresh
     Set-ADTUiConsoleStatus ('{0} conteneur(s) lu(s) dans {1}.' -f $containers.Count, $script:Console.DomainName)
-    Update-ADTUiConsoleList -DistinguishedName $target
+}
+
+function Update-ADTUiConsoleCategoryNode {
+<#
+    Place sous le conteneur les noeuds Utilisateurs, Groupes et Ordinateurs, avec
+    leurs objets : l arborescence montre ainsi tout le contenu, comme un explorateur
+    de fichiers. Les sous-unites, deja presentes, restent en tete.
+#>
+    param([string]$ContainerDN, $Row)
+    if (-not $script:Console.Nodes.ContainsKey($ContainerDN)) { return }
+    $parent = $script:Console.Nodes[$ContainerDN]
+
+    if ($script:Console.Categories.ContainsKey($ContainerDN)) {
+        foreach ($old in @($script:Console.Categories[$ContainerDN])) {
+            try { $null = $parent.Items.Remove($old) }
+            catch { Add-ADTUiSmokeWarning ('Noeud de categorie non retire : ' + $_.Exception.Message) }
+        }
+    }
+
+    $added = New-Object System.Collections.ArrayList
+    foreach ($category in (Get-ADTUiConsoleCategory)) {
+        $members = @(@($Row) | Where-Object { [string]$_.ObjectClass -eq [string]$category.Class })
+        if (-not $members.Count) { continue }
+        $node = New-ADTUiConsoleNode -Header ('{0} ({1})' -f $category.Label, $members.Count) `
+            -Info @{ Kind = 'Category'; ContainerDN = $ContainerDN; Class = [string]$category.Class }
+        $shown = 0
+        foreach ($member in $members) {
+            if ($shown -ge $script:Console.LeafLimit) {
+                $more = New-ADTUiConsoleNode -Header ('... {0} de plus : voir la liste' -f ($members.Count - $shown)) `
+                    -Info @{ Kind = 'Category'; ContainerDN = $ContainerDN; Class = [string]$category.Class }
+                $node.Items.Add($more) | Out-Null
+                break
+            }
+            $label = [string]$member.Name
+            if ([string]$category.Class -ne 'group') {
+                if ($member.Enabled -eq $false) { $label += ' (desactive)' }
+                if ($member.LockedOut) { $label += ' (verrouille)' }
+            }
+            $leaf = New-ADTUiConsoleNode -Header $label -Info @{
+                Kind = 'Object'; ContainerDN = $ContainerDN; Class = [string]$category.Class
+                ObjectDN = [string]$member.DistinguishedName
+            }
+            $node.Items.Add($leaf) | Out-Null
+            $shown++
+        }
+        $parent.Items.Add($node) | Out-Null
+        [void]$added.Add($node)
+    }
+    $script:Console.Categories[$ContainerDN] = @($added)
+    $parent.IsExpanded = $true
+}
+
+function Get-ADTUiConsoleSummary {
+    # Resume du contenu d un conteneur : ce qu on voit d un coup d oeil en y entrant.
+    param($Row)
+    $rows = @($Row)
+    $users = @($rows | Where-Object { [string]$_.ObjectClass -eq 'user' }).Count
+    $groups = @($rows | Where-Object { [string]$_.ObjectClass -eq 'group' }).Count
+    $computers = @($rows | Where-Object { [string]$_.ObjectClass -eq 'computer' }).Count
+    $units = @($rows | Where-Object { $_.IsContainer }).Count
+    return ('{0} utilisateur(s), {1} groupe(s), {2} ordinateur(s), {3} unite(s)' -f $users, $groups, $computers, $units)
+}
+
+function Show-ADTUiConsoleView {
+<#
+    Affiche le contenu d un conteneur, eventuellement limite a une classe d objets,
+    et selectionne un objet dans la liste. Toutes les actions de la console portent
+    sur la selection de la liste : selectionner un objet dans l arborescence le
+    selectionne ici, et les memes boutons s appliquent.
+#>
+    param([string]$ContainerDN, [string]$Class = '', [string]$FocusDN = '', [switch]$Refresh)
+    if (-not $ContainerDN) { return }
+    $key = $ContainerDN + '|' + $Class + '|' + $FocusDN
+    if (-not $Refresh -and $key -eq $script:Console.ViewKey) { return }
+    $script:Console.ViewKey = $key
+    $script:Console.ContainerDN = $ContainerDN
+    $script:Console.ClassFilter = $Class
+    $name = Get-ADTRdnValue -DistinguishedName $ContainerDN
+    if ($ContainerDN -eq $script:Console.DomainDN) { $name = $script:Console.DomainName }
+    $script:Console.ContainerName = $name
+
+    $fresh = $false
+    if ($Refresh -or -not $script:Console.Cache.ContainsKey($ContainerDN)) {
+        $connection = Get-ADTUiConnection
+        $script:Console.Cache[$ContainerDN] = @(Get-ADTDirectoryChild -Path $ContainerDN @connection)
+        $fresh = $true
+    }
+    $all = @($script:Console.Cache[$ContainerDN])
+    if ($fresh -or -not $script:Console.Categories.ContainsKey($ContainerDN)) {
+        Update-ADTUiConsoleCategoryNode -ContainerDN $ContainerDN -Row $all
+    }
+
+    $rows = $all
+    $scopeLabel = 'tout le contenu'
+    if ($Class) {
+        $rows = @($all | Where-Object { [string]$_.ObjectClass -eq $Class })
+        foreach ($category in (Get-ADTUiConsoleCategory)) {
+            if ([string]$category.Class -eq $Class) { $scopeLabel = [string]$category.Label }
+        }
+    }
+    $script:Console.Rows = Set-ADTUiObjectGridSource -Grid $script:Console.Grid -Column (Get-ADTUiConsoleColumn) -Row $rows
+
+    $script:Console.Header.Text = ('{0}  -  affichage : {1} ({2})' -f $name, $scopeLabel, @($rows).Count)
+    if ($script:Console.Summary) { $script:Console.Summary.Text = Get-ADTUiConsoleSummary -Row $all }
+
+    if ($FocusDN) {
+        $position = 0
+        foreach ($row in @($script:Console.Rows)) {
+            if ([string]$row.DistinguishedName -eq $FocusDN) {
+                try { $script:Console.Grid.SelectedIndex = $position }
+                catch { Add-ADTUiSmokeWarning ('Selection de ligne non appliquee : ' + $_.Exception.Message) }
+                break
+            }
+            $position++
+        }
+    }
+    Set-ADTUiConsoleStatus ('{0} : {1}.' -f $ContainerDN, (Get-ADTUiConsoleSummary -Row $all))
 }
 
 function Update-ADTUiConsoleList {
 <#
-    Recharge la liste du contenu du conteneur designe.
+    Relit le conteneur designe - ou le conteneur affiche - apres une modification.
 #>
     param([string]$DistinguishedName)
+    if (-not $DistinguishedName) { $DistinguishedName = $script:Console.ContainerDN }
     if (-not $DistinguishedName) { return }
-    $script:Console.ContainerDN = $DistinguishedName
-    $script:Console.ContainerName = Get-ADTRdnValue -DistinguishedName $DistinguishedName
-    if ($DistinguishedName -eq $script:Console.DomainDN) { $script:Console.ContainerName = $script:Console.DomainName }
-
-    $connection = Get-ADTUiConnection
-    $types = @('All')
-    $selected = [string]$script:Console.TypeFilter.SelectedItem
-    switch ($selected) {
-        'Utilisateurs' { $types = @('User') }
-        'Groupes' { $types = @('Group') }
-        'Ordinateurs' { $types = @('Computer') }
-        'Unites d organisation' { $types = @('Container') }
-    }
-
-    $rows = @(Get-ADTDirectoryChild -Path $DistinguishedName -Type $types @connection)
-    $script:Console.Rows = Set-ADTUiObjectGridSource -Grid $script:Console.Grid -Column (Get-ADTUiConsoleColumn) -Row $rows
-    $script:Console.Header.Text = ('{0}  -  {1} objet(s)' -f $script:Console.ContainerName, @($rows).Count)
-    Set-ADTUiConsoleStatus ('{0} : {1} objet(s).' -f $DistinguishedName, @($rows).Count)
+    Show-ADTUiConsoleView -ContainerDN $DistinguishedName -Class $script:Console.ClassFilter -Refresh
 }
 
 function Invoke-ADTUiConsoleSearch {
@@ -190,6 +334,8 @@ function Invoke-ADTUiConsoleSearch {
     $rows = @(Find-ADTDirectoryObject @parameters @connection)
     $script:Console.Rows = Set-ADTUiObjectGridSource -Grid $script:Console.Grid -Column $columns -Row $rows
     $script:Console.Header.Text = ('Recherche "{0}"  -  {1} resultat(s)' -f $term, @($rows).Count)
+    # Une selection dans l arborescence doit ensuite relire le conteneur.
+    $script:Console.ViewKey = 'recherche|' + $term
     Set-ADTUiConsoleStatus ('Recherche "{0}" : {1} resultat(s).' -f $term, @($rows).Count)
 }
 
@@ -473,15 +619,20 @@ function New-ADTUiConsoleDocument {
 }
 
 function Get-ADTUiConsoleTreeDN {
-    # DN du conteneur selectionne dans l arborescence, ou le conteneur courant.
-    $selected = $null
-    try { $selected = $script:Console.Tree.SelectedItem } catch { $selected = $null }
-    if ($selected) {
-        $tag = [string](Get-ADTUiValue -Target $selected -Name 'Tag')
-        if ($tag) { return $tag }
-    }
+    # Conteneur designe par l arborescence : le conteneur lui-meme, ou celui qui porte
+    # la categorie ou l objet selectionne.
+    $info = Get-ADTUiConsoleNodeInfo
+    if ($info) { return [string]$info['ContainerDN'] }
     if ($script:Console.ContainerDN) { return $script:Console.ContainerDN }
     return $script:Console.DomainDN
+}
+
+function Get-ADTUiConsoleTreeTarget {
+    # Element vise par le menu de l arborescence : l objet si un objet est
+    # selectionne, sinon le conteneur.
+    $info = Get-ADTUiConsoleNodeInfo
+    if ($info -and [string]$info['Kind'] -eq 'Object') { return [string]$info['ObjectDN'] }
+    return (Get-ADTUiConsoleTreeDN)
 }
 
 function Invoke-ADTUiConsoleState {
@@ -594,9 +745,11 @@ function Invoke-ADTUiConsoleImportCsv {
         return
     }
     $script:TabFields['Import-ADTUserFromCsv']['DefaultOU'].Control.Text = $path
-    try { $tabs.SelectedIndex = [int]$script:TabIndex['Import-ADTUserFromCsv'] }
-    catch { Write-Verbose 'Bascule d onglet impossible.' }
-    Set-ADTUiConsoleStatus ('Onglet Importer un CSV : OU de destination pre-remplie avec {0}.' -f $path)
+    try {
+        $tabs.SelectedIndex = [int]$script:ToolsTabIndex
+        $script:ToolTabs.SelectedIndex = [int]$script:TabIndex['Import-ADTUserFromCsv']
+    } catch { Add-ADTUiSmokeWarning 'Bascule vers l onglet d import impossible.' }
+    Set-ADTUiConsoleStatus ('Outils > Importer un CSV : OU de destination pre-remplie avec {0}.' -f $path)
 }
 
 function Invoke-ADTUiConsoleGroupAction {
@@ -619,25 +772,28 @@ function Get-ADTUiConsoleAction {
 
 function New-ADTUiConsoleTab {
 <#
-    Construit l onglet de la console et rend son contenu.
+    Construit la section Annuaire et rend son contenu : l arborescence a gauche, le
+    contenu de l element selectionne a droite, les actions sous la liste.
 #>
     param($Busy)
 
     $tree = [GliderUI.Avalonia.Controls.TreeView]::new()
-    $tree.Height = 430
+    $tree.Height = 560
     $script:Console.Tree = $tree
 
-    $grid = New-ADTUiObjectGrid -Column (Get-ADTUiConsoleColumn) -Height 430
+    $grid = New-ADTUiObjectGrid -Column (Get-ADTUiConsoleColumn) -Height 470
     $script:Console.Grid = $grid
 
-    $header = New-ADTUiText -Text 'Tester la connexion puis charger l arborescence.' -Bold -Wrap
+    $header = New-ADTUiText -Text 'Selectionner une unite d organisation dans l arborescence.' -Bold -Wrap
     $script:Console.Header = $header
+    $summary = New-ADTUiText -Text '' -Wrap -Foreground '#4A5A6E'
+    $script:Console.Summary = $summary
 
-    $simulate = New-ADTUiCheck -Label 'Simulation : verifier sans modifier Active Directory' -Checked $true
+    $simulate = New-ADTUiCheck -Label 'Mode simulation : les actions sont verifiees sans rien modifier dans Active Directory' -Checked $true
     $script:Console.Simulate = $simulate
 
     $searchBox = [GliderUI.Avalonia.Controls.TextBox]::new()
-    $searchBox.Watermark = 'Nom, identifiant, UPN, courriel...'
+    $searchBox.Watermark = 'Rechercher un nom, un identifiant, un UPN, un courriel...'
     $script:Console.SearchBox = $searchBox
 
     $searchScope = [GliderUI.Avalonia.Controls.ComboBox]::new()
@@ -658,36 +814,50 @@ function New-ADTUiConsoleTab {
     }
 
     $reload = { & $guard { Update-ADTUiConsoleTree -SelectDN $script:Console.ContainerDN } }.GetNewClosure()
-    $refreshList = { & $guard { Update-ADTUiConsoleList -DistinguishedName (Get-ADTUiConsoleTreeDN) } }.GetNewClosure()
+    $refreshList = { & $guard { Update-ADTUiConsoleList } }.GetNewClosure()
     $search = { & $guard { Invoke-ADTUiConsoleSearch } }.GetNewClosure()
 
+    # Un clic dans l arborescence : conteneur, categorie ou objet.
     $null = Add-ADTUiEvent -Target $tree -Name 'SelectionChanged' -Handler {
         & $guard {
-            $dn = Get-ADTUiConsoleTreeDN
-            if ($dn) {
-                $script:Console.SearchBox.Text = ''
-                Update-ADTUiConsoleList -DistinguishedName $dn
+            $info = Get-ADTUiConsoleNodeInfo
+            if (-not $info) { return }
+            $script:Console.SearchBox.Text = ''
+            switch ([string]$info['Kind']) {
+                'Container' { Show-ADTUiConsoleView -ContainerDN ([string]$info['ContainerDN']) }
+                'Category' { Show-ADTUiConsoleView -ContainerDN ([string]$info['ContainerDN']) -Class ([string]$info['Class']) }
+                'Object' {
+                    Show-ADTUiConsoleView -ContainerDN ([string]$info['ContainerDN']) -Class ([string]$info['Class']) `
+                        -FocusDN ([string]$info['ObjectDN'])
+                }
             }
         }
     }.GetNewClosure()
 
     $properties = { & $guard { Invoke-ADTUiConsoleProperties } }.GetNewClosure()
     $null = Add-ADTUiEvent -Target $grid -Name 'DoubleTapped' -Handler $properties
+    $null = Add-ADTUiEvent -Target $tree -Name 'DoubleTapped' -Handler {
+        & $guard {
+            $info = Get-ADTUiConsoleNodeInfo
+            if ($info -and [string]$info['Kind'] -eq 'Object') {
+                Invoke-ADTUiConsoleProperties -DistinguishedName ([string]$info['ObjectDN'])
+            }
+        }
+    }.GetNewClosure()
 
-    # --- Barre de recherche ----------------------------------------------------
-    $searchBar = New-ADTUiGridLayout -Column @('Auto', 'Star', 'Auto', 'Auto', 'Auto', 'Auto') -ColumnSpacing 10
+    # --- Recherche ---------------------------------------------------------------
+    $searchBar = New-ADTUiGridLayout -Column @('Star', 'Auto', 'Auto', 'Auto', 'Auto') -ColumnSpacing 10
     $null = Add-ADTUiGridRow -Grid $searchBar
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 0 -Child (New-ADTUiText -Text 'Rechercher')
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 1 -Child $searchBox
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 2 -Child $searchScope
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 3 -Child $typeFilter
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 4 -Child (New-ADTUiButton -Text 'Chercher' -Width 120 -Accent -OnClick $search -DisableWhileBusy $Busy)
-    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 5 -Child (New-ADTUiButton -Text 'Effacer' -Width 100 -OnClick {
+    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 0 -Child $searchBox
+    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 1 -Child $searchScope
+    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 2 -Child $typeFilter
+    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 3 -Child (New-ADTUiButton -Text 'Chercher' -Width 120 -Accent -OnClick $search -DisableWhileBusy $Busy)
+    Add-ADTUiCell -Grid $searchBar -Row 0 -Column 4 -Child (New-ADTUiButton -Text 'Effacer' -Width 100 -OnClick {
             $script:Console.SearchBox.Text = ''
             & $refreshList
         }.GetNewClosure())
 
-    # --- Actions sur le conteneur ---------------------------------------------
+    # --- Actions sur l arborescence --------------------------------------------
     $containerActions = @(
         @{ Header = 'Nouvel utilisateur'; Action = { & $guard { Invoke-ADTUiConsoleNewUser } }.GetNewClosure() },
         @{ Header = 'Nouveau groupe'; Action = { & $guard { Invoke-ADTUiConsoleNewGroup } }.GetNewClosure() },
@@ -696,18 +866,16 @@ function New-ADTUiConsoleTab {
         @{ Header = 'Importer un CSV dans cette OU'; Action = { & $guard { Invoke-ADTUiConsoleImportCsv } }.GetNewClosure() },
         @{ Header = '-'; Action = $null },
         @{ Header = 'Actualiser'; Action = $reload },
-        @{ Header = 'Deplacer...'; Action = { & $guard { Invoke-ADTUiConsoleMove -Source (Get-ADTUiConsoleTreeDN) } }.GetNewClosure() },
-        @{ Header = 'Supprimer...'; Action = { & $guard { Invoke-ADTUiConsoleDelete -Source (Get-ADTUiConsoleTreeDN) } }.GetNewClosure() },
-        @{ Header = 'Proprietes'; Action = { & $guard { Invoke-ADTUiConsoleProperties -DistinguishedName (Get-ADTUiConsoleTreeDN) } }.GetNewClosure() }
+        @{ Header = 'Deplacer...'; Action = { & $guard { Invoke-ADTUiConsoleMove -Source (Get-ADTUiConsoleTreeTarget) } }.GetNewClosure() },
+        @{ Header = 'Supprimer...'; Action = { & $guard { Invoke-ADTUiConsoleDelete -Source (Get-ADTUiConsoleTreeTarget) } }.GetNewClosure() },
+        @{ Header = 'Proprietes'; Action = { & $guard { Invoke-ADTUiConsoleProperties -DistinguishedName (Get-ADTUiConsoleTreeTarget) } }.GetNewClosure() }
     )
     $null = Set-ADTUiMenu -Target $tree -Menu (New-ADTUiMenu -Item $containerActions)
 
-    $treeButtons = New-ADTUiStack -Spacing 6 -Child @(
-        (New-ADTUiButton -Text 'Charger / actualiser' -Accent -OnClick $reload -DisableWhileBusy $Busy),
+    $treeButtons = New-ADTUiRow -Spacing 6 -Child @(
+        (New-ADTUiButton -Text 'Actualiser' -OnClick $reload -DisableWhileBusy $Busy),
         (New-ADTUiButton -Text 'Nouvelle OU...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Nouvelle unite d organisation')),
-        (New-ADTUiButton -Text 'Importer un CSV ici...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Importer un CSV dans cette OU')),
-        (New-ADTUiButton -Text 'Proprietes de l OU...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Proprietes')),
-        (New-ADTUiText -Wrap -Text 'Clic droit dans l arborescence : memes actions sur l element selectionne.')
+        (New-ADTUiButton -Text 'Importer un CSV ici...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Importer un CSV dans cette OU'))
     )
 
     # --- Actions sur la selection ---------------------------------------------
@@ -728,37 +896,47 @@ function New-ADTUiConsoleTab {
     )
     $null = Set-ADTUiMenu -Target $grid -Menu (New-ADTUiMenu -Item $objectActions)
 
+    $createRow = New-ADTUiRow -Spacing 8 -Child @(
+        (New-ADTUiText -Text 'Creer :' -Bold),
+        (New-ADTUiButton -Text 'Utilisateur...' -Accent -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Nouvel utilisateur')),
+        (New-ADTUiButton -Text 'Groupe...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Nouveau groupe'))
+    )
     $rowOne = New-ADTUiRow -Spacing 8 -Child @(
+        (New-ADTUiText -Text 'Selection :' -Bold),
         (New-ADTUiButton -Text 'Proprietes' -OnClick $properties -DisableWhileBusy $Busy),
         (New-ADTUiButton -Text 'Mot de passe...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Reinitialiser le mot de passe...')),
         (New-ADTUiButton -Text 'Activer' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Activer')),
         (New-ADTUiButton -Text 'Desactiver' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Desactiver')),
-        (New-ADTUiButton -Text 'Deverrouiller' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Deverrouiller')),
-        (New-ADTUiButton -Text 'Actualiser' -OnClick $refreshList)
+        (New-ADTUiButton -Text 'Deverrouiller' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Deverrouiller'))
     )
     $rowTwo = New-ADTUiRow -Spacing 8 -Child @(
+        (New-ADTUiText -Text '' -Bold),
         (New-ADTUiButton -Text 'Groupes...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Gerer les groupes...')),
         (New-ADTUiButton -Text 'Membres du groupe...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Membres du groupe...')),
         (New-ADTUiButton -Text 'Horaires de connexion...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Horaires de connexion...')),
         (New-ADTUiButton -Text 'Deplacer...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Deplacer...')),
         (New-ADTUiButton -Text 'Supprimer...' -OnClick (Get-ADTUiConsoleAction -Item $objectActions -Header 'Supprimer...')),
-        (New-ADTUiButton -Text 'Nouvel utilisateur...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Nouvel utilisateur')),
-        (New-ADTUiButton -Text 'Nouveau groupe...' -OnClick (Get-ADTUiConsoleAction -Item $containerActions -Header 'Nouveau groupe'))
+        (New-ADTUiButton -Text 'Actualiser' -OnClick $refreshList)
     )
 
-    $listPanel = New-ADTUiStack -Spacing 8 -Child @($header, $grid, $rowOne, $rowTwo)
+    $listPanel = New-ADTUiStack -Spacing 8 -Child @($header, $summary, $grid, $createRow, $rowOne, $rowTwo)
+    $treePanel = New-ADTUiStack -Spacing 8 -Child @(
+        (New-ADTUiText -Text 'Annuaire' -Bold),
+        $tree,
+        $treeButtons,
+        (New-ADTUiText -Wrap -Foreground '#4A5A6E' -Text 'Chaque unite montre ses utilisateurs, groupes et ordinateurs. Clic droit : actions sur l element selectionne. Double-clic sur un objet : ses proprietes.')
+    )
 
-    $body = New-ADTUiGridLayout -Column @(360, 'Star') -ColumnSpacing 14
+    $body = New-ADTUiGridLayout -Column @(400, 'Star') -ColumnSpacing 16
     $null = Add-ADTUiGridRow -Grid $body
-    Add-ADTUiCell -Grid $body -Row 0 -Column 0 -Child (New-ADTUiStack -Spacing 8 -Child @(
-            (New-ADTUiText -Text 'Arborescence Active Directory' -Bold), $tree, $treeButtons))
+    Add-ADTUiCell -Grid $body -Row 0 -Column 0 -Child $treePanel
     Add-ADTUiCell -Grid $body -Row 0 -Column 1 -Child $listPanel
 
     $content = New-ADTUiStack -Margin 12 -Spacing 10 -Child @(
         $searchBar,
         (New-ADTUiRow -Spacing 16 -Child @(
                 $simulate,
-                (New-ADTUiText -Wrap -Text 'Selection multiple : Ctrl ou Maj dans la liste. Double-clic sur un objet : proprietes.'))),
+                (New-ADTUiText -Wrap -Foreground '#4A5A6E' -Text 'Ctrl ou Maj : selection multiple dans la liste.'))),
         $body
     )
     return $content

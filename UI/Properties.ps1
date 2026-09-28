@@ -244,8 +244,7 @@ function Show-ADTUiProperties {
         $tabs,
         (New-ADTUiRow -Align 'Right' -Spacing 12 -Child @($cancel, $accept))
     )
-    $propertiesWindow.Show()
-    $propertiesWindow.WaitForClosed()
+    Show-ADTUiModal -Window $propertiesWindow
     if (-not $state.Run) { return $null }
 
     if ($state.ManageGroups) { return @{ Action = 'ManageGroups'; Identity = [string]$Object.DistinguishedName; Object = $Object } }

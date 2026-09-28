@@ -60,7 +60,7 @@ Describe 'Interface de la console' {
     It 'Charge les helpers prives dont l interface a besoin' {
         $source = [IO.File]::ReadAllText((Join-Path (Split-Path $PSScriptRoot -Parent) 'Start-PSADToolkit.ps1'))
         foreach ($helper in @('DirectoryBackend.ps1', 'DirectoryConsole.ps1', 'DirectoryWrite.ps1',
-                'CsvHelpers.ps1', 'Format-ADTDisplay.ps1', 'LogonHours.ps1', 'ObjectStatus.ps1')) {
+                'CsvHelpers.ps1', 'Format-ADTDisplay.ps1', 'LogonHours.ps1', 'ObjectStatus.ps1', 'DomainDiscovery.ps1')) {
             $source | Should -BeLike ('*' + $helper + '*') -Because $helper
         }
     }
@@ -229,9 +229,9 @@ Describe 'Verification des types GliderUI au demarrage' {
     }
 
     It 'Couvre tous les types GliderUI que l interface emploie' {
-        # Les menus contextuels et le separateur sont volontairement absents : la
-        # console les construit dans un try/catch et se rabat sur ses boutons.
-        $optional = @('ContextMenu', 'MenuItem', 'Separator')
+        # Les menus contextuels, le separateur et l infobulle sont volontairement
+        # absents : l interface les construit dans un try/catch et s en passe.
+        $optional = @('ContextMenu', 'MenuItem', 'Separator', 'ToolTip')
         foreach ($name in $script:UsedGliderNames) {
             if ($script:CoverageExclusions -contains $name) { continue }
             $short = ($name -split '\.')[-1]
@@ -248,7 +248,7 @@ Describe 'Verification des types GliderUI au demarrage' {
     }
 
     It 'Laisse les types de confort hors de la verification bloquante' {
-        foreach ($name in @('ContextMenu', 'MenuItem', 'Separator')) {
+        foreach ($name in @('ContextMenu', 'MenuItem', 'Separator', 'ToolTip')) {
             foreach ($full in $script:PreflightTypes) {
                 $full.EndsWith('.' + $name) | Should -BeFalse -Because ($name + ' doit rester facultatif')
             }

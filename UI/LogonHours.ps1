@@ -119,8 +119,7 @@ function Show-ADTUiLogonHoursEditor {
             $box = [GliderUI.Avalonia.Controls.CheckBox]::new()
             $box.IsChecked = ($Mask[$slot] -eq '1')
             $box.HorizontalAlignment = 'Center'
-            try { $box.ToolTip = ((Format-ADTDayName -DayOfWeek $day) + ' ' + (Format-ADTHourLabel -Hour $hour) + ' - ' + (Format-ADTHourLabel -Hour ($hour + 1))) }
-            catch { Write-Verbose 'Infobulle refusee.' }
+            Set-ADTUiTip -Target $box -Text ((Format-ADTDayName -DayOfWeek $day) + ' ' + (Format-ADTHourLabel -Hour $hour) + ' - ' + (Format-ADTHourLabel -Hour ($hour + 1)))
             $null = Add-ADTUiEvent -Target $box -Name 'IsCheckedChanged' -Handler $refresh
             $cells[[string]$slot] = $box
             Add-ADTUiCell -Grid $grid -Child $box -Row $rowNumber -Column ($hour + 1)
@@ -193,7 +192,6 @@ function Show-ADTUiLogonHoursEditor {
 
     & $refresh
     $dialog.Content = $scroll
-    $dialog.Show()
-    $dialog.WaitForClosed()
+    Show-ADTUiModal -Window $dialog
     return $state.Mask
 }

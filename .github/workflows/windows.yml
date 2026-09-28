@@ -1,0 +1,72 @@
+name: Windows
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.shell }})
+    runs-on: windows-2022
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [ pwsh, powershell ]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pester
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = '.\Tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+      - name: Coherence des versions et masquage de parametres
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\Tests\Test-VersionConsistency.ps1
+          .\Tests\Test-ParameterShadowing.ps1
+
+  interface:
+    name: Interface (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-2022, windows-2025 ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer GliderUI et son serveur
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-PSResource -Name GliderUI -Version 0.4.1 -TrustRepository -Scope CurrentUser
+          Import-Module GliderUI -RequiredVersion 0.4.1
+          Install-GLIServer -TrustRepository
+      - name: Parcours de l interface (annuaire simule)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'interface'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          pwsh -NoProfile -File .\Start-PSADToolkit.ps1 -SmokeTest -GliderUIVersion 0.4.1 -SmokeReportPath (Join-Path $out 'rapport.json')
+          exit $LASTEXITCODE
+      - name: Captures et rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interface-${{ matrix.os }}
+          path: ${{ runner.temp }}/interface
+          if-no-files-found: warn

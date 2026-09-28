@@ -19,6 +19,74 @@ using namespace GliderUI.Avalonia.Markup.Xaml
     jamais les fonctionnalites.
 #>
 
+# Test de fumee : sur la machine d integration continue, l interface s ouvre avec un
+# annuaire simule, chaque fenetre s affiche puis se referme d elle-meme, et toute
+# erreur remontee a l operateur est consignee pour faire echouer le test. Hors test,
+# ces structures restent vides et Show-ADTUiModal se comporte normalement.
+$script:ADTUiSmoke = @{
+    Enabled       = $false
+    Shown         = New-Object System.Collections.ArrayList
+    Errors        = New-Object System.Collections.ArrayList
+    Warnings      = New-Object System.Collections.ArrayList
+    # Dossier des captures d ecran ; vide = pas de capture.
+    CaptureFolder = ''
+    RenderDelayMs = 1500
+}
+
+function Save-ADTUiSmokeScreenshot {
+    # Capture de l ecran pendant le test de fumee : c est le seul moyen de VOIR
+    # l interface telle que GliderUI l affiche, sans poste Windows sous la main.
+    param([string]$Name)
+    if (-not $script:ADTUiSmoke.Enabled -or -not $script:ADTUiSmoke.CaptureFolder) { return }
+    try {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $clean = ($Name -replace '[^A-Za-z0-9 _-]', '').Trim() -replace '\s+', '-'
+            $file = Join-Path $script:ADTUiSmoke.CaptureFolder ('{0:00}-{1}.png' -f $script:ADTUiSmoke.Shown.Count, $clean)
+            $bitmap.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
+        } finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
+    } catch { Add-ADTUiSmokeWarning ('Capture d ecran impossible : ' + $_.Exception.Message) }
+}
+
+function Show-ADTUiModal {
+    # Affiche une fenetre et attend sa fermeture. WaitForClosed traite les evenements
+    # pendant l attente : c est ce qui fait office de boite modale sous GliderUI.
+    param($Window)
+    $Window.Show()
+    if ($script:ADTUiSmoke.Enabled) {
+        [void]$script:ADTUiSmoke.Shown.Add([string]$Window.Title)
+        if ($script:ADTUiSmoke.CaptureFolder) {
+            Start-Sleep -Milliseconds $script:ADTUiSmoke.RenderDelayMs
+            Save-ADTUiSmokeScreenshot -Name ([string]$Window.Title)
+        }
+        $Window.Close()
+    }
+    $Window.WaitForClosed()
+}
+
+function Add-ADTUiSmokeWarning {
+    param([string]$Message)
+    if ($script:ADTUiSmoke.Enabled) { [void]$script:ADTUiSmoke.Warnings.Add($Message) }
+    Write-Verbose $Message
+}
+
+function Set-ADTUiTip {
+    # Infobulle. La propriete ToolTip n est pas exposee par GliderUI 0.4.1 - la sonde
+    # sur Windows l a montre - : on passe par la propriete attachee, et on s en passe
+    # si elle manque aussi. Une infobulle est un confort, jamais une information
+    # indispensable.
+    param($Target, [string]$Text)
+    try { [GliderUI.Avalonia.Controls.ToolTip]::SetTip($Target, $Text) }
+    catch { Add-ADTUiSmokeWarning ('Infobulle indisponible : ' + $_.Exception.Message) }
+}
+
 function Add-ADTUiEvent {
     # Branche un gestionnaire si la methode Add<Nom> existe sur le controle.
     # Rend $true si le branchement a reussi, $false sinon : l appelant peut alors
@@ -32,7 +100,7 @@ function Add-ADTUiEvent {
         $null = $method.Invoke($Handler)
         return $true
     } catch {
-        Write-Verbose ('Evenement {0} indisponible : {1}' -f $member, $_.Exception.Message)
+        Add-ADTUiSmokeWarning ('Evenement {0} indisponible : {1}' -f $member, $_.Exception.Message)
         return $false
     }
 }
@@ -79,7 +147,7 @@ function New-ADTUiText {
     $block.Text = $Text
     if ($Bold) { $block.FontWeight = 'Bold' }
     if ($Wrap) { $block.TextWrapping = 'Wrap' }
-    if ($Foreground) { try { $block.Foreground = $Foreground } catch { Write-Verbose 'Couleur de texte refusee.' } }
+    if ($Foreground) { try { $block.Foreground = $Foreground } catch { Add-ADTUiSmokeWarning ('Couleur de texte refusee : ' + $_.Exception.Message) } }
     $block.VerticalAlignment = 'Center'
     return $block
 }
@@ -183,7 +251,7 @@ function New-ADTUiMenu {
         }
         return $menu
     } catch {
-        Write-Verbose ('Menu contextuel indisponible : {0}' -f $_.Exception.Message)
+        Add-ADTUiSmokeWarning ('Menu contextuel indisponible : {0}' -f $_.Exception.Message)
         return $null
     }
 }
