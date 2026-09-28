@@ -36,7 +36,9 @@ $root = Split-Path -Parent $installer
 . (Join-Path $root 'Tools\ADTDependency.ps1')
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-function Write-Step { param([string]$Text) Write-Output ('==> ' + $Text) }
+# Write-Host et non Write-Output : appele depuis des fonctions qui rendent un
+# chemin, Write-Output ajouterait le message a leur resultat.
+function Write-Step { param([string]$Text) Write-Host ('==> ' + $Text) }
 
 # --- Version ------------------------------------------------------------------
 $manifest = Import-PowerShellDataFile -Path (Join-Path $root 'PSADToolkit.psd1')

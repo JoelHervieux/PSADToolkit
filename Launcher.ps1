@@ -102,7 +102,8 @@ function Write-Status {
     Write-ADTLauncherLog -Path $logPath -Message $Text
     if ($script:SplashText) { $script:SplashText.Text = $Text }
     Update-Splash
-    if ($Silent) { Write-Output $Text }
+    # Write-Host : Write-Status est appele depuis des fonctions qui rendent une valeur.
+    if ($Silent) { Write-Host $Text }
 }
 
 function Close-Splash {
