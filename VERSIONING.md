@@ -68,6 +68,7 @@ Le suffixe ne contient **ni point ni espace** : `test1`, pas `test.1`. PowerShel
 6. Construire le programme d'installation sur Windows avec Inno Setup 6 : `.\installer\Build-Installer.ps1`. Le pipeline `.github/workflows/windows.yml` le construit, l'installe en silence, ouvre l'interface puis le désinstalle ; il doit être vert.
 7. Commiter, puis étiqueter : `git tag -a v3.2.0-test1 -m "PSADToolkit 3.2.0-test1"`.
 8. Pousser la branche et l'étiquette : `git push -u origin <branche> --follow-tags`.
+9. Publier : onglet **Actions → Publication → Run workflow** sur le commit à publier, ou envoi de l'étiquette `v<version>`. Le workflow vérifie la cohérence des versions, construit et teste le programme d'installation, puis crée la release `v<version>` avec `PSADToolkit-Setup-<version>.exe` et `SHA256SUMS.txt`. Une version de canal est publiée comme préversion.
 
 ## Passage en version stable
 

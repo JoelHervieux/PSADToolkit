@@ -1,0 +1,107 @@
+name: Publication
+
+# Publie une version telechargeable : PSADToolkit-Setup-<version>.exe sur la page
+# Releases du depot. Lancement manuel (onglet Actions > Publication > Run workflow)
+# ou par l envoi d une etiquette v<version>. La version vient du manifeste ; une
+# version de canal (test1, rc1...) est publiee comme preversion.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publication
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    name: Construire, verifier et publier
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $manifest = Import-PowerShellDataFile .\PSADToolkit.psd1
+          $channel = [string]$manifest.PrivateData.PSData.Prerelease
+          $version = [string]$manifest.ModuleVersion
+          if ($channel) { $version += '-' + $channel }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne ('v' + $version)) {
+            throw ('Etiquette {0} differente de la version du manifeste {1}.' -f $env:GITHUB_REF_NAME, $version)
+          }
+          .\Tests\Test-VersionConsistency.ps1
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$([bool]$channel)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+
+      - name: Construire le programme d installation
+        shell: pwsh
+        run: .\installer\Build-Installer.ps1 -OutputDirectory "$env:RUNNER_TEMP\setup"
+
+      - name: Verifier l installation avant publication
+        shell: powershell
+        run: |
+          $setup = (Get-ChildItem "$env:RUNNER_TEMP\setup\*.exe" | Select-Object -First 1).FullName
+          .\Tests\CI\Test-Installer.ps1 -Setup $setup -Repository $PWD.Path -OutputFolder "$env:RUNNER_TEMP\installation"
+
+      - name: Notes de version
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $setup = Get-ChildItem "$env:RUNNER_TEMP\setup\*.exe" | Select-Object -First 1
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
+          ('{0}  {1}' -f $hash, $setup.Name) | Set-Content "$env:RUNNER_TEMP\setup\SHA256SUMS.txt" -Encoding ascii
+
+          # Section du CHANGELOG correspondant a la version.
+          $changelog = Get-Content -Raw .\CHANGELOG.md
+          $pattern = '(?ms)^## ' + [regex]::Escape($env:VERSION) + '\b[^\n]*\n(.*?)(?=^## |\z)'
+          $section = [regex]::Match($changelog, $pattern).Groups[1].Value.Trim()
+
+          $notes = @(
+            '## Installation'
+            ''
+            ('1. Telecharger **{0}** ci-dessous.' -f $setup.Name)
+            '2. L executer avec un compte administrateur du poste : licence, dossier d installation, raccourcis.'
+            '3. Ouvrir **PSADToolkit** depuis le menu Demarrer, puis choisir le domaine a gerer.'
+            ''
+            'PowerShell 7 et GliderUI sont inclus : aucun acces a Internet n est necessaire pour installer. Ils sont ensuite tenus a jour automatiquement.'
+            ''
+            'Windows 10 1607, Windows 11 ou Windows Server 2016 a 2025. Le programme n est pas signe : SmartScreen peut demander **Informations complementaires > Executer quand meme**.'
+            ''
+            ('SHA256 : `{0}`' -f $hash)
+            ''
+            '## Changements'
+            ''
+            $section
+          )
+          $notes -join "`n" | Set-Content "$env:RUNNER_TEMP\notes.md" -Encoding utf8
+
+      - name: Publier
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          $tag = 'v' + $env:VERSION
+          $files = @(Get-ChildItem "$env:RUNNER_TEMP\setup\*.exe", "$env:RUNNER_TEMP\setup\SHA256SUMS.txt" | ForEach-Object FullName)
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Republication de la meme version : remplacer les fichiers et les notes.
+            gh release upload $tag @files --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE) { throw 'Envoi des fichiers en echec.' }
+            gh release edit $tag --notes-file "$env:RUNNER_TEMP\notes.md" --repo $env:GITHUB_REPOSITORY
+          } else {
+            $options = @('--title', ('PSADToolkit ' + $env:VERSION), '--notes-file', "$env:RUNNER_TEMP\notes.md", '--target', $env:GITHUB_SHA)
+            if ($env:PRERELEASE -eq 'true') { $options += '--prerelease' }
+            gh release create $tag @files @options --repo $env:GITHUB_REPOSITORY
+          }
+          if ($LASTEXITCODE) { throw 'Publication en echec.' }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json url,assets --jq '.url, (.assets[] | .name + "  " + .url)'

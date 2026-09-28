@@ -10,11 +10,12 @@ Administration Active Directory avec interface graphique en français : **consol
 
 ### Installation (recommandée)
 
-1. Lancer **`PSADToolkit-Setup-<version>.exe`** avec un compte administrateur du poste. L'assistant présente la licence, ce qui va être installé, puis demande le **dossier d'installation** (par défaut `C:\Program Files\PSADToolkit`) et propose un raccourci sur le Bureau.
-2. En fin d'installation, l'assistant prépare le poste **sans accès Internet** grâce aux paquets qu'il contient :
+1. **Télécharger** `PSADToolkit-Setup-<version>.exe` depuis la page **[Releases](https://github.com/JoelHervieux/PSADToolkit/releases)** du dépôt : section *Assets* de la dernière version. Le fichier `SHA256SUMS.txt` publié à côté permet de vérifier le téléchargement : `Get-FileHash .\PSADToolkit-Setup-<version>.exe`.
+2. Lancer **`PSADToolkit-Setup-<version>.exe`** avec un compte administrateur du poste. L'assistant présente la licence, ce qui va être installé, puis demande le **dossier d'installation** (par défaut `C:\Program Files\PSADToolkit`) et propose un raccourci sur le Bureau.
+3. En fin d'installation, l'assistant prépare le poste **sans accès Internet** grâce aux paquets qu'il contient :
    - **PowerShell 7** s'il est absent ou plus ancien que 7.4 — installé à côté de Windows PowerShell 5.1, sans le remplacer, avec la **mise à jour par Microsoft Update** activée ;
    - le module **GliderUI** et son serveur `GliderUI.Server.win-x64`, pour tous les utilisateurs.
-3. Ouvrir **PSADToolkit** depuis le menu Démarrer. Une fenêtre d'attente indique ce qui est vérifié, puis la fenêtre **Choisir un domaine** s'ouvre.
+4. Ouvrir **PSADToolkit** depuis le menu Démarrer. Une fenêtre d'attente indique ce qui est vérifié, puis la fenêtre **Choisir un domaine** s'ouvre.
 
 Le programme d'installation n'est pas signé : SmartScreen peut demander **Informations complémentaires → Exécuter quand même**. La désinstallation se fait depuis **Paramètres → Applications** ; elle retire PSADToolkit mais laisse PowerShell 7 et GliderUI, que d'autres outils peuvent utiliser.
 
@@ -42,6 +43,8 @@ Ces règles se règlent dans **`Launcher.settings.psd1`**, dans le dossier d'ins
 1. Installer **PowerShell 7.4 ou supérieur** : [github.com/PowerShell/PowerShell/releases/latest](https://github.com/PowerShell/PowerShell/releases/latest) (`PowerShell-<version>-win-x64.msi`) ou `winget install --id Microsoft.PowerShell -e`.
 2. Extraire complètement le ZIP dans un dossier local, par exemple `C:\Outils\PSADToolkit`.
 3. Double-cliquer sur **Lancer.cmd** : il appelle le même lanceur que `PSADToolkit.exe`, qui installe GliderUI et son serveur depuis PowerShell Gallery. Sans Internet, voir *Installation hors ligne* ci-dessous.
+
+Les versions sont publiées par le workflow **Publication** (`.github/workflows/release.yml`) : il construit le programme d'installation, l'installe, l'ouvre et le désinstalle sur une machine Windows, puis seulement le dépose dans Releases. Une version de canal (`test`, `rc`) y apparaît comme préversion.
 
 Pour construire soi-même le programme d'installation, sur Windows avec [Inno Setup 6](https://jrsoftware.org/isdl.php) : `.\installer\Build-Installer.ps1`. Le script compile `PSADToolkit.exe`, télécharge les paquets à livrer et produit `build\installer\PSADToolkit-Setup-<version>.exe`.
 
