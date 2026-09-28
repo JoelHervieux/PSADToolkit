@@ -143,11 +143,19 @@ function New-ADTUiButton {
 
 function New-ADTUiText {
     param([string]$Text, [switch]$Bold, [switch]$Wrap, [string]$Foreground)
-    $block = [GliderUI.Avalonia.Controls.TextBlock]::new()
+    $block = $null
+    if ($Foreground -match '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$') {
+        # GliderUI 0.4.1 ne convertit pas une chaine en pinceau quand on affecte
+        # Foreground depuis PowerShell ; le XAML, lui, sait le faire.
+        try {
+            $xaml = '<TextBlock xmlns="https://github.com/avaloniaui" Foreground="{0}" />' -f $Foreground
+            $block = [GliderUI.Avalonia.Markup.Xaml.AvaloniaRuntimeXamlLoader]::Parse($xaml, $null)
+        } catch { Add-ADTUiSmokeWarning ('Couleur de texte refusee : ' + $_.Exception.Message) }
+    }
+    if (-not $block) { $block = [GliderUI.Avalonia.Controls.TextBlock]::new() }
     $block.Text = $Text
     if ($Bold) { $block.FontWeight = 'Bold' }
     if ($Wrap) { $block.TextWrapping = 'Wrap' }
-    if ($Foreground) { try { $block.Foreground = $Foreground } catch { Add-ADTUiSmokeWarning ('Couleur de texte refusee : ' + $_.Exception.Message) } }
     $block.VerticalAlignment = 'Center'
     return $block
 }

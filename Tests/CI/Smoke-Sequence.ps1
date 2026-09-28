@@ -70,8 +70,10 @@ $ventes = 'CN=GS-Ventes,OU=Employes,DC=lab,DC=local'
 # --- Ouverture : choix du domaine -----------------------------------------------
 
 Invoke-SmokeStep 'Fenetre de choix du domaine' {
-    $choices = @(Get-ADTUiDomainChoice)
-    Test-SmokeCondition 'Domaines proposes' ($choices.Count -ge 2) ('{0} domaine(s)' -f $choices.Count)
+    # Ces fonctions rendent leur tableau d un bloc (return , $x) : ne pas le
+    # reemballer dans @(), qui en ferait un tableau d un seul element.
+    $choices = Get-ADTUiDomainChoice
+    Test-SmokeCondition 'Domaines proposes' (@($choices).Count -ge 2) ('{0} domaine(s)' -f @($choices).Count)
     $null = Show-ADTUiDomainChooser
 }
 
@@ -117,7 +119,7 @@ Invoke-SmokeStep 'Categorie Groupes' {
 
 Invoke-SmokeStep 'Objet choisi dans l arborescence' {
     Show-ADTUiConsoleView -ContainerDN $employes -Class 'user' -FocusDN $joel
-    $selected = @(Get-ADTUiConsoleTarget)
+    $selected = Get-ADTUiConsoleTarget
     Test-SmokeCondition 'Objet selectionne dans la liste' (($selected -join '|') -eq $joel) ($selected -join '|')
     Save-SmokeScreen 'annuaire-utilisateur'
 }
@@ -204,7 +206,9 @@ Invoke-SmokeStep 'Fermeture' { $window.Close() }
 
 $failedSteps = @($smokeSteps | Where-Object { -not $_.Ok })
 $failedChecks = @($smokeChecks | Where-Object { -not $_.Ok })
+$passed = -not ($failedSteps.Count -or $failedChecks.Count -or $script:ADTUiSmoke.Errors.Count)
 $report = [ordered]@{
+    Passed     = $passed
     PowerShell = [string]$PSVersionTable.PSVersion
     OS         = [string][Environment]::OSVersion.VersionString
     GliderUI   = [string](Get-Module -Name GliderUI).Version
@@ -218,7 +222,9 @@ $json = ConvertTo-Json -InputObject $report -Depth 4
 if ($SmokeReportPath) { Set-Content -LiteralPath $SmokeReportPath -Value $json -Encoding UTF8 }
 Write-Output $json
 
-if ($failedSteps.Count -or $failedChecks.Count -or $script:ADTUiSmoke.Errors.Count) {
+# Le code de sortie ne suffit pas : il s est deja perdu a la fermeture du serveur
+# GliderUI. Le pipeline lit donc aussi Passed dans le rapport.
+if (-not $passed) {
     Write-Error ('Test de fumee en echec : {0} etape(s), {1} verification(s), {2} erreur(s) affichee(s).' -f `
             $failedSteps.Count, $failedChecks.Count, $script:ADTUiSmoke.Errors.Count) -ErrorAction Continue
     exit 1

@@ -1,0 +1,21 @@
+PSADToolkit - administration Active Directory
+
+Ce programme d installation va :
+
+  1. copier PSADToolkit dans le dossier choisi a l etape suivante ;
+  2. installer PowerShell 7 s il est absent ou trop ancien (version 7.4 au minimum).
+     La mise a jour automatique par Microsoft Update est activee pour PowerShell ;
+  3. installer le module GliderUI et son serveur, qui dessinent l interface ;
+  4. creer les raccourcis du menu Demarrer (et du Bureau si vous le demandez).
+
+Les paquets de PowerShell 7 et de GliderUI sont livres avec ce programme : aucun
+acces a Internet n est necessaire pour installer.
+
+Ensuite, a chaque demarrage, PSADToolkit verifie une fois par jour si une mise a
+jour de PowerShell 7 ou de GliderUI est disponible et l installe. Une nouvelle
+version de GliderUI n est utilisee qu apres verification ; en cas d echec, la
+precedente est conservee. Ces reglages se trouvent dans Launcher.settings.psd1.
+
+PSADToolkit agit sur Active Directory avec les droits du compte Windows utilise
+(ou d un compte saisi a l ouverture). Etre administrateur local du poste ne donne
+aucun droit dans l annuaire.

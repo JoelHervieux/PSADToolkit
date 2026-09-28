@@ -1,7 +1,7 @@
 ﻿@{
     # ModuleToProcess (et non RootModule) pour rester lisible par PowerShell 2.0
     ModuleToProcess   = 'PSADToolkit.psm1'
-    ModuleVersion     = '3.1.0'
+    ModuleVersion     = '3.2.0'
     GUID              = 'd7c1e8a4-4b92-4f3e-9c21-5a8e6f0b3d11'
     Author            = 'Joel'
     CompanyName       = ''
@@ -58,7 +58,7 @@
     # Chaine vide = version stable, validee par la recette Windows de VALIDATION.md.
     PrivateData       = @{
         PSData = @{
-            Prerelease = 'test4'
+            Prerelease = 'test1'
             ProjectUri = 'https://github.com/JoelHervieux/PSADToolkit'
             LicenseUri = 'https://github.com/JoelHervieux/PSADToolkit/blob/main/LICENSE'
         }

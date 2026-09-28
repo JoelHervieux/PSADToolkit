@@ -123,11 +123,17 @@ function Get-ADTUiConsoleNodeInfo {
     return $null
 }
 
+function Clear-ADTUiConsoleSearchBox {
+    if ($script:Console.SearchBox) { $script:Console.SearchBox.Text = '' }
+}
+
 function Update-ADTUiConsoleTree {
 <#
-    Recharge l arborescence des conteneurs du domaine, puis affiche le conteneur vise.
+    Recharge l arborescence des conteneurs du domaine, puis affiche le conteneur vise :
+    par defaut celui qui etait affiche, s il existe encore, sinon la racine.
 #>
     param([string]$SelectDN)
+    if (-not $SelectDN) { $SelectDN = $script:Console.ContainerDN }
     $connection = Get-ADTUiConnection
     $domain = Get-ADTNativeDomain @connection
     $domainDN = [string]$domain.DistinguishedName
@@ -813,7 +819,10 @@ function New-ADTUiConsoleTab {
         try { & $Body } catch { Show-ADTUiError $_.Exception.Message }
     }
 
-    $reload = { & $guard { Update-ADTUiConsoleTree -SelectDN $script:Console.ContainerDN } }.GetNewClosure()
+    # Dans un bloc .GetNewClosure(), $script: designe la portee du module dynamique de
+    # la closure, pas celle du script : l etat de la console n y est lu qu au travers
+    # de fonctions. Tests\ConsoleInterface.Tests.ps1 le verifie.
+    $reload = { & $guard { Update-ADTUiConsoleTree } }.GetNewClosure()
     $refreshList = { & $guard { Update-ADTUiConsoleList } }.GetNewClosure()
     $search = { & $guard { Invoke-ADTUiConsoleSearch } }.GetNewClosure()
 
@@ -822,7 +831,7 @@ function New-ADTUiConsoleTab {
         & $guard {
             $info = Get-ADTUiConsoleNodeInfo
             if (-not $info) { return }
-            $script:Console.SearchBox.Text = ''
+            Clear-ADTUiConsoleSearchBox
             switch ([string]$info['Kind']) {
                 'Container' { Show-ADTUiConsoleView -ContainerDN ([string]$info['ContainerDN']) }
                 'Category' { Show-ADTUiConsoleView -ContainerDN ([string]$info['ContainerDN']) -Class ([string]$info['Class']) }
@@ -853,7 +862,7 @@ function New-ADTUiConsoleTab {
     Add-ADTUiCell -Grid $searchBar -Row 0 -Column 2 -Child $typeFilter
     Add-ADTUiCell -Grid $searchBar -Row 0 -Column 3 -Child (New-ADTUiButton -Text 'Chercher' -Width 120 -Accent -OnClick $search -DisableWhileBusy $Busy)
     Add-ADTUiCell -Grid $searchBar -Row 0 -Column 4 -Child (New-ADTUiButton -Text 'Effacer' -Width 100 -OnClick {
-            $script:Console.SearchBox.Text = ''
+            Clear-ADTUiConsoleSearchBox
             & $refreshList
         }.GetNewClosure())
 

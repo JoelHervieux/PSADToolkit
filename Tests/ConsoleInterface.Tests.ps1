@@ -119,6 +119,27 @@ Describe 'Interface de la console' {
         }
     }
 
+    It 'Ne lit pas $script: dans un bloc fige par GetNewClosure' {
+        # Regression 3.2.0 : dans un tel bloc, $script: designe la portee du module
+        # dynamique de la closure. $script:Console y valait $null et la selection
+        # dans l arborescence echouait sur "The property 'Text' cannot be found".
+        foreach ($entry in $trees.GetEnumerator()) {
+            $closures = $entry.Value.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                    [string]$node.Member.Extent.Text -eq 'GetNewClosure' -and
+                    $node.Expression -is [System.Management.Automation.Language.ScriptBlockExpressionAst]
+                }, $true)
+            foreach ($closure in $closures) {
+                $scriptVariables = @($closure.Expression.FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.VariableExpressionAst] -and $node.VariablePath.IsScript
+                        }, $true))
+                $scriptVariables.Count | Should -Be 0 -Because ($entry.Key + ' ligne ' + $closure.Extent.StartLineNumber)
+            }
+        }
+    }
+
     It 'Place la console avant les onglets historiques' {
         $source = [IO.File]::ReadAllText((Join-Path (Split-Path $PSScriptRoot -Parent) 'Start-PSADToolkit.ps1'))
         $console = $source.IndexOf('$consoleTab.Header')

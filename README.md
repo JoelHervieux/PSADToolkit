@@ -1,41 +1,49 @@
-﻿# PSADToolkit 3.1.0-test4
+﻿# PSADToolkit 3.2.0-test1
 
 Administration Active Directory avec interface graphique en français : **console d'arborescence** à la manière d'« Utilisateurs et ordinateurs Active Directory », import CSV et rapports HTML. L'interface est bâtie sur **[GliderUI](https://github.com/mdgrs-mei/GliderUI)** (Avalonia) et exige **PowerShell 7.4 ou supérieur**. Les fonctions du module restent utilisables en ligne de commande depuis **Windows PowerShell 2.0 à 5.1**. Les contrôleurs de domaine visés vont de **Windows Server 2008 SP2 à Windows Server 2025** : l'accès se fait en LDAP par ADSI / .NET, donc **RSAT et AD Web Services ne sont pas nécessaires** et rien n'est installé sur le contrôleur de domaine.
 
-**Version `3.1.0-test4` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.1.0 ajoute la console d'administration — arborescence, listes, propriétés, horaires de connexion, mots de passe — sans retirer ni renommer quoi que ce soit de la 3.0.0. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
+**Version `3.2.0-test1` — canal de test.** Le canal `test` signifie que cette version n'a pas encore passé la recette Windows décrite dans `VALIDATION.md` : ne pas s'en servir pour des écritures en production. La 3.2.0 apporte un **programme d'installation** (`PSADToolkit-Setup-<version>.exe`) qui installe PowerShell 7 et GliderUI et les tient à jour, et une interface simplifiée : on choisit le domaine en entrant, puis une seule section **Annuaire** montre les unités d'organisation avec leurs utilisateurs, groupes et ordinateurs. Rien n'est retiré ni renommé dans le module. La nomenclature, la portée de chaque numéro et la procédure de publication sont décrites dans `VERSIONING.md`.
 
 > GliderUI annonce lui-même une phase de prototypage avec des ruptures d'API fréquentes. Épingler la version installée et relire `CHANGELOG.md` avant toute mise à jour.
 
 ## Démarrage
 
-1. Installer **PowerShell 7.4 ou supérieur**. Il s'installe **à côté** de Windows PowerShell 5.1 et ne le remplace pas.
+### Installation (recommandée)
 
-   - Téléchargement direct : [github.com/PowerShell/PowerShell/releases/latest](https://github.com/PowerShell/PowerShell/releases/latest) — prendre le fichier `PowerShell-<version>-win-x64.msi`.
-   - Ou en ligne de commande : `winget install --id Microsoft.PowerShell -e`
-   - Procédure détaillée : [Installation de PowerShell sur Windows — Microsoft](https://learn.microsoft.com/fr-fr/powershell/scripting/install/installing-powershell-on-windows)
+1. Lancer **`PSADToolkit-Setup-<version>.exe`** avec un compte administrateur du poste. L'assistant présente la licence, ce qui va être installé, puis demande le **dossier d'installation** (par défaut `C:\Program Files\PSADToolkit`) et propose un raccourci sur le Bureau.
+2. En fin d'installation, l'assistant prépare le poste **sans accès Internet** grâce aux paquets qu'il contient :
+   - **PowerShell 7** s'il est absent ou plus ancien que 7.4 — installé à côté de Windows PowerShell 5.1, sans le remplacer, avec la **mise à jour par Microsoft Update** activée ;
+   - le module **GliderUI** et son serveur `GliderUI.Server.win-x64`, pour tous les utilisateurs.
+3. Ouvrir **PSADToolkit** depuis le menu Démarrer. Une fenêtre d'attente indique ce qui est vérifié, puis la fenêtre **Choisir un domaine** s'ouvre.
 
-   Vérifier ensuite la version depuis `pwsh.exe` :
+Le programme d'installation n'est pas signé : SmartScreen peut demander **Informations complémentaires → Exécuter quand même**. La désinstallation se fait depuis **Paramètres → Applications** ; elle retire PSADToolkit mais laisse PowerShell 7 et GliderUI, que d'autres outils peuvent utiliser.
 
-   ```powershell
-   $PSVersionTable.PSVersion
-   ```
+### À chaque lancement
 
-2. Installer le module [GliderUI](https://www.powershellgallery.com/packages/GliderUI) et son serveur :
+`PSADToolkit.exe` démarre `Launcher.ps1` avec Windows PowerShell 5.1, présent sur tout Windows 10, 11 et Server 2016 ou plus récent :
 
-   ```powershell
-   Install-PSResource -Name GliderUI
-   Install-GLIServer
-   ```
+- si PowerShell 7.4 ou plus manque, il l'installe (demande d'autorisation Windows) ;
+- **une fois par jour**, il cherche une mise à jour de PowerShell 7 (canal LTS, en restant en 7.x) et de GliderUI (correctifs seulement : 0.4.1 → 0.4.2, jamais 0.5.0, GliderUI étant encore en 0.x) et l'installe ;
+- une nouvelle version de GliderUI est **vérifiée dans un processus neuf** avant d'être utilisée ; si elle échoue, elle est écartée et la précédente reste en service ;
+- sans Internet, rien n'est bloquant : les versions en place sont utilisées.
 
-   **Deux paquets, pas un.** `GliderUI` est le module ; `Install-GLIServer` installe à côté un **module distinct**, propre à la plateforme — `GliderUI.Server.win-x64` sur un Windows 64 bits. C'est lui qui porte les classes Avalonia utilisées par l'interface. Sans lui, `Import-Module GliderUI` réussit mais aucune classe n'existe. Le relancer **après chaque mise à jour** du module.
+Ces règles se règlent dans **`Launcher.settings.psd1`**, dans le dossier d'installation : version minimale, canal, politique de mise à jour (`None`, `Patch`, `Minor`, `Major`), fréquence, et `AllowOnline = $false` pour un poste isolé. Le journal du lanceur est dans `%LOCALAPPDATA%\PSADToolkit\Logs\launcher.log` ; en cas d'échec, une boîte de dialogue en donne le chemin.
 
-   Si la machine n'atteint pas PowerShell Gallery — serveur isolé, proxy, `Hôte inconnu` — voir *Installation hors ligne* ci-dessous.
-3. Extraire complètement le ZIP dans un dossier local (par exemple `C:\Outils\PSADToolkit`). Ne pas lancer depuis l'intérieur de l'archive.
-4. Double-cliquer sur **Lancer.cmd**. Il repère `pwsh.exe` et démarre l'interface. Le mode STA n'est plus nécessaire : GliderUI affiche la fenêtre dans un processus serveur distinct.
-5. Saisir le **nom DNS complet d'un contrôleur de domaine**, par exemple `dc01.contoso.local`, puis cliquer sur **Tester la connexion**. Laisser vide pour utiliser le domaine du compte Windows courant.
-6. Pour employer une autre identité, cocher **Autre compte**, saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne donne pas automatiquement ces droits.
-7. Ouvrir l'onglet **Console AD** et cliquer sur **Charger / actualiser** pour afficher l'arborescence du domaine. Les autres onglets restent disponibles pour les traitements en lot.
-8. Pour toute modification d'Active Directory, la **simulation est cochée par défaut**, dans la console comme dans les onglets. Décocher seulement après vérification : une confirmation récapitule la cible, l'action et la liste des objets concernés.
+### Utilisation
+
+1. **Choisir le domaine** à gérer : la liste propose les domaines utilisés récemment, celui de la session, celui du poste et ceux de la forêt. On peut aussi saisir un domaine ou un contrôleur (`contoso.local`, `dc01.contoso.local`). Pour employer une autre identité, cocher **Autre compte** et saisir `DOMAINE\utilisateur` ou un UPN et son mot de passe. Les droits délégués dans AD sont nécessaires ; être administrateur local ne les donne pas.
+2. La section **Annuaire** s'ouvre sur le domaine. À gauche, l'arborescence : chaque unité d'organisation montre ses sous-unités puis ses **Utilisateurs**, **Groupes** et **Ordinateurs**, avec leur nombre. À droite, la liste de l'élément choisi, son résumé et les boutons d'action. Un clic sur une catégorie filtre la liste ; un clic sur un objet le sélectionne ; un double-clic ouvre ses propriétés ; le clic droit propose les actions.
+3. **Changer de domaine** est accessible en permanence dans le bandeau.
+4. Les traitements en lot historiques (import CSV, départs, rapports, comptes inactifs…) sont regroupés dans la section **Outils**.
+5. Pour toute modification d'Active Directory, la **simulation est cochée par défaut**, dans l'Annuaire comme dans les Outils. Décocher seulement après vérification : une confirmation récapitule la cible, l'action et la liste des objets concernés. Le **Journal des opérations**, replié en bas de la fenêtre, s'ouvre de lui-même pour afficher le résultat.
+
+### Installation manuelle (sans l'assistant)
+
+1. Installer **PowerShell 7.4 ou supérieur** : [github.com/PowerShell/PowerShell/releases/latest](https://github.com/PowerShell/PowerShell/releases/latest) (`PowerShell-<version>-win-x64.msi`) ou `winget install --id Microsoft.PowerShell -e`.
+2. Extraire complètement le ZIP dans un dossier local, par exemple `C:\Outils\PSADToolkit`.
+3. Double-cliquer sur **Lancer.cmd** : il appelle le même lanceur que `PSADToolkit.exe`, qui installe GliderUI et son serveur depuis PowerShell Gallery. Sans Internet, voir *Installation hors ligne* ci-dessous.
+
+Pour construire soi-même le programme d'installation, sur Windows avec [Inno Setup 6](https://jrsoftware.org/isdl.php) : `.\installer\Build-Installer.ps1`. Le script compile `PSADToolkit.exe`, télécharge les paquets à livrer et produit `build\installer\PSADToolkit-Setup-<version>.exe`.
 
 Les résultats s'affichent dans le tableau. Agrandir la fenêtre ou défiler horizontalement pour lire toutes les colonnes. Vérifier **Status**, **Error** et **Messages**. `Partiel` signifie que certaines modifications ont déjà été appliquées : examiner l'état du compte avant de relancer.
 
@@ -63,7 +71,7 @@ Un paquet PowerShell Gallery est une archive ZIP servie en HTTPS direct : aucun 
 
    Le script trouve le paquet quel que soit le nom que le navigateur lui a donné — il ouvre chaque fichier du dossier et cherche le manifeste, ce qui écarte au passage une page d'erreur HTML enregistrée par mégarde. Il refuse une version qui ne correspond pas à celle de GliderUI, extrait au bon endroit, puis **vérifie** que le type `AvaloniaRuntimeXamlLoader` se résout.
 
-3. Fermer **toutes** les fenêtres PowerShell, puis relancer `Lancer.cmd`. Un assembly déjà chargé dans une session ne peut pas y être remplacé.
+3. Fermer **toutes** les fenêtres PowerShell, puis relancer PSADToolkit. Un assembly déjà chargé dans une session ne peut pas y être remplacé.
 
 La version du serveur doit être **exactement** celle du module. Après chaque `Update-PSResource -Name GliderUI`, refaire l'opération.
 
@@ -75,12 +83,12 @@ La version du serveur doit être **exactement** celle du module. Après chaque `
 
 | Rôle | Système | Prérequis |
 |---|---|---|
-| Poste qui affiche l'interface | Windows 10 / 11, ou Windows Server 2016 à 2025 avec bureau | [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest), module [GliderUI](https://www.powershellgallery.com/packages/GliderUI) et `Install-GLIServer` |
+| Poste qui affiche l'interface | Windows 10 / 11, ou Windows Server 2016 à 2025 avec bureau | [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest), module [GliderUI](https://www.powershellgallery.com/packages/GliderUI) et son serveur : **installés par le programme d'installation** |
 | Contrôleurs de domaine administrés | Windows Server 2008 SP2 à 2025 | Aucun composant à installer : accès LDAP / ADSI depuis le poste d'administration |
 | Utilisation en ligne de commande | Tout hôte Windows joignant le domaine | Windows PowerShell 2.0 à 5.1, ou PowerShell 7 ; `.NET` et `System.DirectoryServices` du système |
 | Server Core | Windows Server sans bureau | Ligne de commande seulement : lancer l'interface depuis un poste d'administration |
 
-**L'interface ne s'exécute plus sous Windows PowerShell.** `powershell.exe` ne dépasse pas la version 5.1 ; [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest) est exigé par GliderUI. Lancer l'interface avec `pwsh.exe`, ce que fait `Lancer.cmd`. Les serveurs qui ne peuvent pas recevoir PowerShell 7, dont Server 2008 SP2, restent administrables : installer PSADToolkit sur un poste d'administration moderne, qui joint le contrôleur de domaine en LDAP.
+**L'interface ne s'exécute plus sous Windows PowerShell.** `powershell.exe` ne dépasse pas la version 5.1 ; [PowerShell 7.4+](https://github.com/PowerShell/PowerShell/releases/latest) est exigé par GliderUI. Le lanceur (`PSADToolkit.exe` ou `Lancer.cmd`) démarre avec Windows PowerShell 5.1 uniquement pour installer PowerShell 7 au besoin, puis ouvre l'interface avec `pwsh.exe`. Les serveurs qui ne peuvent pas recevoir PowerShell 7, dont Server 2008 SP2, restent administrables : installer PSADToolkit sur un poste d'administration moderne, qui joint le contrôleur de domaine en LDAP.
 
 **Le backend reste Windows.** GliderUI est multiplateforme, mais `System.DirectoryServices` ne l'est pas : l'interface refuse de démarrer ailleurs que sous Windows.
 
@@ -112,9 +120,9 @@ La compatibilité ci-dessus est une **cible technique**, pas une certification o
 
 ## La console Active Directory
 
-L'onglet **Console AD** est le point d'entrée quotidien. Il reprend l'organisation d'« Utilisateurs et ordinateurs Active Directory » : l'arborescence du domaine à gauche, le contenu de l'unité sélectionnée à droite.
+La section **Annuaire** est le point d'entrée quotidien ; elle s'ouvre sur le domaine choisi au démarrage. Elle reprend l'organisation d'« Utilisateurs et ordinateurs Active Directory » : l'arborescence du domaine à gauche, le contenu de l'élément sélectionné à droite.
 
-- **Arborescence** : domaine, unités d'organisation et conteneurs intégrés (`Builtin`, `Users`, `Computers`). Elle est lue en une seule requête LDAP ; le contenu d'une unité, lui, n'est lu qu'à sa sélection.
+- **Arborescence** : domaine, unités d'organisation et conteneurs intégrés (`Builtin`, `Users`, `Computers`). Sous chaque unité ouverte apparaissent ses **Utilisateurs**, **Groupes** et **Ordinateurs**, avec leur nombre et leurs objets ; au-delà de 100 objets d'une catégorie, un dernier nœud renvoie à la liste complète. Les comptes désactivés ou verrouillés sont signalés dans leur libellé. Les conteneurs sont lus en une seule requête LDAP ; le contenu d'une unité n'est lu qu'à sa sélection, puis gardé en mémoire jusqu'à **Actualiser**.
 - **Liste** : utilisateurs, groupes, ordinateurs et sous-unités, avec leur état (actif, désactivé, verrouillé, expiré, mot de passe à changer). **Ctrl** et **Maj** sélectionnent plusieurs objets ; toutes les actions en lot portent sur la sélection.
 - **Double-clic** sur un objet : sa feuille de propriétés.
 - **Clic droit** dans l'arborescence ou dans la liste : les mêmes actions, appliquées à l'élément sélectionné. Le menu contextuel est un confort : **chaque action reste accessible par un bouton**, pour que l'outil reste complet si la version de GliderUI installée n'expose pas les menus contextuels.
@@ -148,11 +156,13 @@ Tous les jours, dates et heures **affichés** suivent le format régional de la 
 
 Deux exceptions délibérées : le **journal** garde un horodatage ISO 8601 (`AAAA-MM-JJ hh:mm:ss`), triable et lisible de la même façon sur tous les postes qui relisent un fichier d'audit ; et la **date inscrite dans la description** d'un compte lors d'un départ reste ISO, pour qu'elle ne dépende pas du poste qui a fait l'opération.
 
-## Les onglets
+## Les sections
 
-| Onglet | Action |
+**Annuaire** est la section principale. Les traitements en lot sont regroupés dans **Outils**, un onglet chacun :
+
+| Section | Action |
 |---|---|
-| Console AD | Arborescence du domaine, contenu des unités, recherche, propriétés, création, déplacement, suppression, activation, déverrouillage, groupes, horaires de connexion et mots de passe |
+| Annuaire | Arborescence du domaine, contenu des unités, recherche, propriétés, création, déplacement, suppression, activation, déverrouillage, groupes, horaires de connexion et mots de passe |
 | Créer un compte | Prénom, nom, OU, identifiant automatique ou imposé, groupes, courriel, service, fonction, dossier personnel facultatif |
 | Importer un CSV | Aperçu obligatoire avant lancement, sélection de l’OU dans l’arborescence, création facultative d’une sous-OU par département, lecture de tous les groupes, choix `;` ou `,` et option d’ignorer les identifiants existants |
 | Groupes | Ajouter ou retirer plusieurs utilisateurs à plusieurs groupes ; listes séparées par `;` |
@@ -245,7 +255,7 @@ Copier `dist\PSADToolkit-Standalone.ps1`, puis le charger avec un point suivi d'
 Test-ADTPrerequisite
 ```
 
-Le standalone fournit les fonctions en ligne de commande, sans rien installer, y compris sous Windows PowerShell 2.0. **L'interface, elle, exige le dossier complet**, PowerShell 7.4+ et GliderUI ; elle se lance avec `Lancer.cmd`. Pour régénérer le standalone après modification des sources, exécuter `Build.ps1` sur un poste de développement avec PowerShell 5.1 ou 7.
+Le standalone fournit les fonctions en ligne de commande, sans rien installer, y compris sous Windows PowerShell 2.0. **L'interface, elle, exige le dossier complet**, PowerShell 7.4+ et GliderUI ; elle se lance avec `PSADToolkit.exe` ou `Lancer.cmd`. Pour régénérer le standalone après modification des sources, exécuter `Build.ps1` sur un poste de développement avec PowerShell 5.1 ou 7.
 
 ## Sauvegardes de départ et limites
 

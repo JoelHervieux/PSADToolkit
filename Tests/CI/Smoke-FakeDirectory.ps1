@@ -107,7 +107,7 @@ function Get-ADTDirectoryChild {
 }
 
 function Find-ADTDirectoryObject {
-    [CmdletBinding()] param($SearchTerm, $Type, $SearchBase, $Attribute, $Exact, $SizeLimit, $Server, $Credential, $LogPath)
+    [CmdletBinding()] param($SearchTerm, $Type, $SearchBase, $Attribute, [switch]$Exact, $SizeLimit, $Server, $Credential, $LogPath)
     foreach ($row in (Get-FakeChildren -Path 'OU=Employes,DC=lab,DC=local')) {
         if ([string]$row.Name -like ('*' + $SearchTerm + '*')) {
             $row | Add-Member -NotePropertyName Container -NotePropertyValue 'OU=Employes,DC=lab,DC=local' -Force -PassThru
@@ -116,7 +116,7 @@ function Find-ADTDirectoryObject {
 }
 
 function Get-ADTObjectProperty {
-    [CmdletBinding()] param($Identity, $SkipDeletionProtection, $Server, $Credential, $LogPath)
+    [CmdletBinding()] param($Identity, [switch]$SkipDeletionProtection, $Server, $Credential, $LogPath)
     $dn = [string]@($Identity)[0]
     $class = 'user'
     if ($dn -like 'OU=*') { $class = 'organizationalUnit' }
@@ -143,7 +143,7 @@ function Get-ADTObjectProperty {
 }
 
 function Get-ADTGroupMember {
-    [CmdletBinding()] param($Identity, $Recursive, $IncludeGroup, $Server, $Credential, $LogPath)
+    [CmdletBinding()] param($Identity, [switch]$Recursive, [switch]$IncludeGroup, $Server, $Credential, $LogPath)
     foreach ($row in (Get-FakeChildren -Path 'OU=Employes,DC=lab,DC=local')) {
         if ([string]$row.ObjectClass -ne 'user') { continue }
         $row | Add-Member -NotePropertyName GroupName -NotePropertyValue 'GS-Ventes' -Force
@@ -169,8 +169,11 @@ $fakeWrites = @(
 $common = @([System.Management.Automation.PSCmdlet]::CommonParameters) + @([System.Management.Automation.PSCmdlet]::OptionalCommonParameters)
 foreach ($commandName in $fakeWrites) {
     $real = Get-Command -Name $commandName -Module PSADToolkit -ErrorAction Stop
-    $names = @($real.Parameters.Keys | Where-Object { $common -notcontains $_ })
-    $declared = ($names | ForEach-Object { '$' + $_ }) -join ', '
+    # Les commutateurs restent des commutateurs : "-Recursive" sans valeur doit se
+    # lier comme sur la vraie commande.
+    $declared = @($real.Parameters.Values | Where-Object { $common -notcontains $_.Name } | ForEach-Object {
+            if ($_.SwitchParameter) { '[switch]$' + $_.Name } else { '$' + $_.Name }
+        }) -join ', '
     $body = "[CmdletBinding(SupportsShouldProcess = `$true)] param($declared) " +
     "[pscustomobject]@{ Commande = '$commandName'; Status = 'Simulation'; Error = '' }"
     Set-Item -Path ('function:script:' + $commandName) -Value ([scriptblock]::Create($body))

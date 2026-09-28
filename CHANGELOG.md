@@ -1,5 +1,69 @@
 ﻿# Changements
 
+## 3.2.0-test1 - 2026-09-28
+
+Installation en un programme, prerequis tenus a jour, interface simplifiee.
+
+### Programme d installation et lanceur
+
+- `PSADToolkit-Setup-<version>.exe` (Inno Setup 6) : licence, page d information,
+  choix du dossier d installation, raccourcis du menu Demarrer et du Bureau,
+  desinstallation depuis Parametres > Applications. Il livre PowerShell 7 (MSI),
+  GliderUI et `GliderUI.Server.win-x64` : l installation fonctionne hors ligne.
+  Construit par `installer\Build-Installer.ps1`.
+- `PSADToolkit.exe` : petit executable C# qui demarre `Launcher.ps1` sans console.
+  `Lancer.cmd` appelle desormais le meme lanceur.
+- `Launcher.ps1` s execute avec Windows PowerShell 5.1 et, a chaque lancement :
+  - installe PowerShell 7 s il manque ou s il est plus ancien que 7.4, depuis le
+    paquet livre ou, a defaut, depuis la publication officielle ; Microsoft Update
+    est active pour PowerShell ;
+  - une fois par jour, installe la derniere version de PowerShell 7 du canal LTS
+    (en restant en 7.x) et le dernier correctif de GliderUI ;
+  - verifie toute nouvelle version de GliderUI dans un processus neuf avant de
+    l utiliser ; une version qui echoue est ecartee, la precedente reste en service ;
+  - affiche une fenetre d attente, puis ouvre l interface ; toute erreur est
+    expliquee dans une boite de dialogue avec le chemin du journal.
+  Reglages dans `Launcher.settings.psd1` : version minimale, canal, politiques
+  `None` / `Patch` / `Minor` / `Major`, frequence, `AllowOnline`.
+- `Tools\Initialize-ADTEnvironment.ps1` (PowerShell 7) installe GliderUI et son
+  serveur de la meme version, depuis les paquets livres ou PowerShell Gallery.
+
+### Interface
+
+- Fenetre **Choisir un domaine** a l ouverture : domaines recents, domaine de la
+  session et du poste, domaines de la foret et approuves, ou saisie libre ; autre
+  compte facultatif. **Changer de domaine** reste accessible dans le bandeau. Les
+  domaines recents sont memorises sans aucun secret.
+- Une seule section **Annuaire** : sous chaque unite d organisation, ses
+  **Utilisateurs**, **Groupes** et **Ordinateurs**, avec leur nombre et leurs
+  objets ; comptes desactives et verrouilles signales. Un clic sur une categorie
+  filtre la liste, un clic sur un objet le selectionne, un double-clic ouvre ses
+  proprietes. Resume du contenu de l unite affichee.
+- Les onglets de traitement en lot sont regroupes dans **Outils**. Le journal des
+  operations est replie et s ouvre de lui-meme a la premiere operation.
+
+### Corrections
+
+- Selection dans l arborescence : dans un bloc `.GetNewClosure()`, `$script:`
+  designe la portee du module dynamique de la closure. `$script:Console` y valait
+  `$null` et la selection echouait sur "The property 'Text' cannot be found". Le
+  bouton **Actualiser** rechargeait aussi la racine au lieu de l unite affichee.
+  Un test refuse desormais tout `$script:` dans un tel bloc.
+- Couleurs de texte : GliderUI 0.4.1 refuse d affecter une chaine a `Foreground`
+  depuis PowerShell ; le texte colore est cree en XAML.
+- L infobulle (`ToolTip`) n est pas exposee par GliderUI 0.4.1 : elle devient
+  facultative.
+
+### Validation
+
+- Nouveau pipeline `.github/workflows/windows.yml` : Pester sous Windows
+  PowerShell 5.1 et PowerShell 7 ; parcours complet de l interface avec un
+  annuaire simule sur Windows Server 2022 et 2025 - chaque fenetre ouverte, captures
+  d ecran en artefact ; construction et installation silencieuse du programme
+  d installation.
+- `Tests\Launcher.Tests.ps1` : choix des versions, frequence des verifications,
+  paquets livres, installation hors ligne d un .nupkg, etat du lanceur.
+
 ## 3.1.0-test4 - 2026-09-17
 
 Correction du defaut qui empechait l interface de demarrer sur le poste d essai,

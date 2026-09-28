@@ -62,11 +62,83 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP 'interface'
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           pwsh -NoProfile -File .\Start-PSADToolkit.ps1 -SmokeTest -GliderUIVersion 0.4.1 -SmokeReportPath (Join-Path $out 'rapport.json')
-          exit $LASTEXITCODE
+          $code = $LASTEXITCODE
+          $reportPath = Join-Path $out 'rapport.json'
+          if (-not (Test-Path $reportPath)) { throw 'Aucun rapport produit.' }
+          $report = Get-Content -Raw $reportPath | ConvertFrom-Json
+          if (-not $report.Passed) { throw 'Test de fumee en echec : voir le rapport ci-dessus.' }
+          if ($code) { throw ('Code de sortie {0}.' -f $code) }
       - name: Captures et rapport
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: interface-${{ matrix.os }}
           path: ${{ runner.temp }}/interface
+          if-no-files-found: warn
+
+  installateur:
+    name: Programme d installation
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire PSADToolkit.exe et le programme d installation
+        shell: pwsh
+        run: .\installer\Build-Installer.ps1 -OutputDirectory "$env:RUNNER_TEMP\setup"
+      - name: Programme d installation (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PSADToolkit-Setup
+          path: ${{ runner.temp }}/setup/*.exe
+          if-no-files-found: error
+      - name: Installer, lancer, desinstaller
+        shell: powershell
+        run: |
+          $setup = (Get-ChildItem "$env:RUNNER_TEMP\setup\*.exe" | Select-Object -First 1).FullName
+          .\Tests\CI\Test-Installer.ps1 -Setup $setup -Repository $PWD.Path -OutputFolder "$env:RUNNER_TEMP\installation"
+      - name: Journaux et captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-windows-2022
+          path: ${{ runner.temp }}/installation
+          if-no-files-found: warn
+
+  poste-sans-powershell7:
+    name: Installation sur un poste sans PowerShell 7
+    needs: installateur
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PSADToolkit-Setup
+          path: ${{ runner.temp }}/setup
+      - name: Desinstaller PowerShell 7 et GliderUI
+        shell: powershell
+        run: |
+          $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          $entries = @(Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { [string]$_.DisplayName -like 'PowerShell 7*' })
+          foreach ($entry in $entries) {
+            Write-Output ('Desinstallation : ' + $entry.DisplayName + ' ' + $entry.PSChildName)
+            $process = Start-Process msiexec.exe -ArgumentList '/x', $entry.PSChildName, '/qn', '/norestart' -Wait -PassThru
+            Write-Output ('  code ' + $process.ExitCode)
+          }
+          Remove-Item "$env:ProgramFiles\PowerShell\7" -Recurse -Force -ErrorAction SilentlyContinue
+          foreach ($folder in @("$env:ProgramFiles\PowerShell\Modules", "$HOME\Documents\PowerShell\Modules")) {
+            Get-ChildItem $folder -Directory -Filter 'GliderUI*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+          }
+          Get-Command pwsh.exe -All -ErrorAction SilentlyContinue | ForEach-Object { Write-Output ('Encore present : ' + $_.Source) }
+      - name: Installer, lancer, desinstaller
+        shell: powershell
+        run: |
+          $setup = (Get-ChildItem "$env:RUNNER_TEMP\setup\*.exe" | Select-Object -First 1).FullName
+          .\Tests\CI\Test-Installer.ps1 -Setup $setup -Repository $PWD.Path -OutputFolder "$env:RUNNER_TEMP\installation" -ExpectPowerShellInstall
+      - name: Journaux et captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-sans-powershell7
+          path: ${{ runner.temp }}/installation
           if-no-files-found: warn
