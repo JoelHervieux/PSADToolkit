@@ -1,6 +1,32 @@
 ﻿# Validation
 
-> **État au 17 septembre 2026 : version du dépôt `3.1.0-test4`.** Aucune version de ce dépôt n'a passé la recette Windows. Ce qui est décrit ci-dessous a été **réellement exécuté**, sous Linux, avec PowerShell 7.4.6 et Pester 5.7.1 ; ce qui ne l'a pas été est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
+> **État au 28 septembre 2026 : version du dépôt `3.2.0-test1`.** Aucune version de ce dépôt n'a passé la recette sur un véritable domaine. Depuis la 3.2.0, l'interface, le programme d'installation et le lanceur sont en revanche **exécutés sur Windows** à chaque publication, par le pipeline `.github/workflows/windows.yml`. Ce qui n'a pas été vérifié est listé explicitement. Voir `VERSIONING.md` pour la nomenclature et les conditions de passage en version stable.
+
+## Ce qui a été exécuté pour 3.2.0-test1
+
+Machines GitHub Actions `windows-2022` (Windows Server 2022, build 20348) et `windows-2025`, PowerShell 7.6.6, Windows PowerShell 5.1, GliderUI 0.4.1, Inno Setup 6. Ces serveurs partagent le noyau et le moteur d'affichage de Windows 11 ; aucune machine Windows 10 ou 11 cliente n'a été utilisée.
+
+| Vérification | Résultat |
+|---|---|
+| `Invoke-Pester -Path .\Tests` sous **Windows PowerShell 5.1** et sous **PowerShell 7** | Réussi dans les deux moteurs |
+| `Tests\Test-VersionConsistency.ps1`, `Tests\Test-ParameterShadowing.ps1` | PASS |
+| **Parcours de l'interface** avec annuaire simulé, Server 2022 et Server 2025 | Réussi : 24 fenêtres et vues affichées, 18 vérifications, **0 erreur présentée à l'opérateur, 0 avertissement** |
+| Construction de `PSADToolkit.exe` (csc .NET 4) et de `PSADToolkit-Setup-3.2.0-test1.exe` (PowerShell 7.4.20 et GliderUI 0.4.1 livrés) | Réussie |
+| Installation silencieuse, Server 2022 | Fichiers, raccourci, GliderUI et son serveur installés **depuis les paquets livrés** dans `Program Files\PowerShell\Modules`, types chargés |
+| Interface **installée** parcourue avec l'annuaire simulé | Réussi |
+| `PSADToolkit.exe` : lanceur, vérifications, ouverture de l'interface sur **Choisir un domaine** | Réussi |
+
+Le parcours de l'interface (`Tests\CI\Smoke-Sequence.ps1`) remplace les fonctions de lecture et d'écriture par un annuaire simulé (`Tests\CI\Smoke-FakeDirectory.ps1`) : les fausses écritures sont générées à partir des paramètres des vraies, si bien qu'un paramètre renommé fait échouer le test. Chaque fenêtre s'ouvre réellement dans GliderUI puis se referme ; toute erreur que l'opérateur aurait vue est comptée comme un échec. Captures d'écran dans les artefacts du pipeline.
+
+Le parcours a révélé, avant publication, trois défauts qu'aucun test hors Windows ne pouvait voir : `$script:` lu dans un bloc `.GetNewClosure()` (la sélection dans l'arborescence échouait), l'affectation d'une couleur de texte refusée par GliderUI, et un faux commutateur dans l'annuaire simulé. Ils sont corrigés et couverts.
+
+## Non vérifié pour 3.2.0-test1
+
+- Toute lecture ou écriture sur un **véritable domaine** : la recette ci-dessous reste entièrement à faire.
+- L'installation de PowerShell 7 par le programme sur un poste qui ne l'a pas : voir le job « Installation sur un poste sans PowerShell 7 » du pipeline.
+- La mise à jour effective de GliderUI : aucune version 0.4.x postérieure à 0.4.1 n'était publiée ; seule la recherche a été exercée.
+- L'élévation interactive (UAC) du lanceur, l'écran de l'assistant d'installation et SmartScreen : le pipeline installe en silence avec un compte déjà administrateur.
+- Une stratégie de groupe imposant `AllSigned` : les scripts ne sont pas signés.
 
 ## Ce qui a été exécuté pour 3.1.0-test4
 
@@ -51,7 +77,6 @@ Répartition des 134 tests : `Console.Tests.ps1` 49, `PSADToolkit.Tests.ps1` 45,
 - La lecture d'une stratégie de mot de passe affinée (`msDS-ResultantPSO`) sur un domaine de niveau 2008 ou supérieur.
 - L'exécution sur Windows PowerShell 2.0 / .NET 2.0 sous Server 2008 SP2.
 - `Tests\Test-Compatibility.ps1` et PSScriptAnalyzer.
-- Le pipeline GitHub Actions.
 
 ## Premier démarrage réel de l'interface
 

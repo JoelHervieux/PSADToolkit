@@ -65,7 +65,9 @@ internal static class Program
         ProcessStartInfo start = new ProcessStartInfo(powershell, arguments.ToString());
         start.UseShellExecute = false;
         start.CreateNoWindow = true;
-        start.WorkingDirectory = folder;
+        // Dossier de travail hors du dossier d installation : un processus qui y
+        // travaille le verrouillerait et empecherait la desinstallation de le retirer.
+        start.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         try
         {
             using (Process process = Process.Start(start))
