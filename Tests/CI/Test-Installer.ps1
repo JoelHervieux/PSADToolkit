@@ -140,7 +140,10 @@ foreach ($id in @($exe.Id) + @(if ($interface) { $interface.ProcessId })) {
     Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
 }
 Get-Process -Name 'GliderUI*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" | Where-Object { [string]$_.CommandLine -like '*Start-PSADToolkit.ps1*' } |
+# Le lanceur (powershell.exe) attend l interface : l arreter aussi, sans quoi son
+# dossier de travail - celui de l application - resterait verrouille.
+Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe' OR Name = 'powershell.exe'" |
+    Where-Object { [string]$_.CommandLine -like '*Start-PSADToolkit.ps1*' -or [string]$_.CommandLine -like '*PSADToolkit\Launcher.ps1*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 3
 
@@ -150,7 +153,8 @@ $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentLi
 $deadline = (Get-Date).AddSeconds(60)
 while ((Test-Path -LiteralPath (Join-Path $app 'PSADToolkit.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
 Start-Sleep -Seconds 3
-Test-Step 'Desinstallation' ($uninstall.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $app)) ('code {0}' -f $uninstall.ExitCode)
+$left = @(Get-ChildItem -LiteralPath $app -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($app.Length + 1) })
+Test-Step 'Desinstallation' ($uninstall.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $app)) ('code {0} ; restant : {1}' -f $uninstall.ExitCode, $(if ($left.Count) { $left -join ', ' } elseif (Test-Path -LiteralPath $app) { 'dossier vide' } else { 'rien' }))
 Test-Step 'Raccourci retire' (-not (Test-Path -LiteralPath $shortcut))
 Test-Step 'PowerShell 7 conserve' (@(Get-ADTPowerShellInstall).Count -gt 0)
 
