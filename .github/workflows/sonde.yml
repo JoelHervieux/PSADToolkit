@@ -1,0 +1,15 @@
+name: Sonde runner Windows (temporaire)
+on:
+  push:
+    branches: [ 'claude/**' ]
+    paths: [ 'Tests/CI/Probe-Runner.ps1', '.github/workflows/sonde.yml' ]
+jobs:
+  sonde:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sonde
+        shell: pwsh
+        timeout-minutes: 12
+        run: ./Tests/CI/Probe-Runner.ps1
